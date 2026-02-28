@@ -1,20 +1,27 @@
 {
   "name": "front-end",
   "version": "1.0.0",
-  "description": "",
+  "description": "Stenter Chemical Dosage — Electron frontend",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dev":   "electron . --inspect"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/STENTER-Chemical-Dosage/front-end.git"
   },
-  "keywords": [],
+  "keywords": ["electron", "stenter", "chemical-dosage"],
   "author": "",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/STENTER-Chemical-Dosage/front-end/issues"
   },
-  "homepage": "https://github.com/STENTER-Chemical-Dosage/front-end#readme"
+  "homepage": "https://github.com/STENTER-Chemical-Dosage/front-end#readme",
+  "devDependencies": {
+    "electron": "^40.6.1"
+  },
+  "dependencies": {
+    "axios": "^1.13.6"
+  }
 }

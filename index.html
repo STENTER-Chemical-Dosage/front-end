@@ -1,6 +1,112 @@
 <!DOCTYPE html>
-<html>
+<!--
+  index.html — SPA Shell
+
+  This is the only HTML file in the app. It provides:
+   - The #app mount point where the Router swaps page content.
+   - <link> tags for all CSS (theme tokens + global styles).
+   - <script> tags for every JS module, **in dependency order**.
+
+  SCRIPT LOADING ORDER (dependencies must come before dependants):
+   1. Utilities  (Logger → Helpers → AuthGuard → Router)
+   2. API layer  (AuthAPI — depends on Logger)
+   3. Components (FormGroup, ButtonComponent — no dependencies)
+   4. Pages      (LoginPage, SignupPage, ResetPage, HomePage — depend on all above)
+   5. renderer.js — bootstraps the router after every other module is ready
+
+  HOW TO ADD A NEW PAGE:
+   1. Create src/pages/my-page.js
+   2. Add <script src="src/pages/my-page.js"></script> ABOVE renderer.js below
+   3. Register the route in renderer.js  (see that file for instructions)
+
+  HOW TO ADD GLOBAL STYLES:
+   Add a <link rel="stylesheet"> tag in the <head> section below.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      Content Security Policy:
+      Restricts what resources the renderer can load.
+      Adjust 'script-src' and 'style-src' if you add CDN resources.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src  'self';
+        style-src   'self' 'unsafe-inline';
+        img-src     'self' data:;
+        font-src    'self';
+        connect-src 'self';
+      "
+    />
+
+    <title>Stenter Chemical Dosage</title>
+
+    <!-- ── Styles (theme tokens must be loaded before global.css) ── -->
+    <!-- theme.css is @imported from global.css, so only one link needed -->
+    <link rel="stylesheet" href="src/styles/global.css" />
+  </head>
+
   <body>
-    <h1>Hello from Electron!</h1>
+    <!--
+      #app is the single mount point for all page content.
+      The Router calls container.innerHTML = ... to swap pages.
+    -->
+    <div id="app">
+      <!-- Initial loading indicator shown before JS renders the first page -->
+      <div style="
+        display:flex;
+        height:100vh;
+        align-items:center;
+        justify-content:center;
+        flex-direction:column;
+        gap:16px;
+        background:#f8fafc;
+        font-family:'Segoe UI',system-ui,sans-serif;
+        color:#64748b;
+        font-size:14px;
+      ">
+        <div style="
+          width:36px;height:36px;
+          border:3px solid #dbeafe;
+          border-top-color:#2563eb;
+          border-radius:50%;
+          animation:spin 0.7s linear infinite;
+        "></div>
+        Loading…
+        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         SCRIPT LOADING — DO NOT REORDER
+         Each file depends on the globals exposed by files above it.
+         ══════════════════════════════════════════════════════════════ -->
+
+    <!-- 1. Utilities ──────────────────────────────────────────────── -->
+    <script src="src/utils/logger.js"></script>       <!-- window.Logger       -->
+    <script src="src/utils/helpers.js"></script>      <!-- window.Helpers      -->
+    <script src="src/utils/auth-guard.js"></script>   <!-- window.AuthGuard    -->
+    <script src="src/utils/router.js"></script>       <!-- window.Router       -->
+
+    <!-- 2. API layer ──────────────────────────────────────────────── -->
+    <script src="src/api/auth.js"></script>           <!-- window.AuthAPI      -->
+
+    <!-- 3. Reusable components ────────────────────────────────────── -->
+    <script src="src/components/form-group.js"></script>  <!-- window.FormGroup       -->
+    <script src="src/components/button.js"></script>      <!-- window.ButtonComponent -->
+
+    <!-- 4. Pages ──────────────────────────────────────────────────── -->
+    <script src="src/pages/login.js"></script>        <!-- window.LoginPage    -->
+    <script src="src/pages/signup.js"></script>       <!-- window.SignupPage   -->
+    <script src="src/pages/reset.js"></script>        <!-- window.ResetPage    -->
+    <script src="src/pages/home.js"></script>         <!-- window.HomePage     -->
+
+    <!-- 5. App bootstrap — must be LAST ───────────────────────────── -->
+    <script src="renderer.js"></script>
   </body>
 </html>

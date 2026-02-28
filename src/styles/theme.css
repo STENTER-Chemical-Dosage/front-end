@@ -1,0 +1,83 @@
+/**
+ * theme.css — Design Tokens (CSS Custom Properties)
+ *
+ * All colours, spacing, typography, and shadow values live here.
+ * To change the look of the entire app, only edit this file.
+ *
+ * HOW TO EXTEND:
+ *  - Add new colour or spacing tokens following the naming pattern below.
+ *  - Reference them in global.css or component-level styles using var(--token-name).
+ */
+
+:root {
+  /* ── Brand colours ─────────────────────────────────────────────────────── */
+  --color-primary:        #2563eb;   /* Main blue — buttons, links, focus rings */
+  --color-primary-hover:  #1d4ed8;   /* Slightly darker blue for hover state    */
+  --color-primary-light:  #dbeafe;   /* Light blue — backgrounds, badges        */
+  --color-primary-dark:   #1e40af;   /* Deep blue — active / pressed state      */
+
+  /* ── Neutral palette ───────────────────────────────────────────────────── */
+  --color-white:          #ffffff;
+  --color-bg:             #f8fafc;   /* Page background                         */
+  --color-surface:        #ffffff;   /* Card / form surface                     */
+  --color-border:         #e2e8f0;   /* Input / card borders                    */
+  --color-border-focus:   #2563eb;   /* Border colour when input is focused     */
+
+  /* ── Text colours ──────────────────────────────────────────────────────── */
+  --color-text:           #1e293b;   /* Primary body text                       */
+  --color-text-muted:     #64748b;   /* Secondary / helper text                 */
+  --color-text-placeholder: #94a3b8; /* Input placeholder                       */
+
+  /* ── Semantic colours ──────────────────────────────────────────────────── */
+  --color-error:          #dc2626;   /* Error messages, destructive actions     */
+  --color-error-bg:       #fef2f2;   /* Error alert background                  */
+  --color-success:        #16a34a;   /* Success messages                        */
+  --color-success-bg:     #f0fdf4;   /* Success alert background                */
+  --color-warning:        #d97706;   /* Warning messages                        */
+  --color-warning-bg:     #fffbeb;   /* Warning alert background                */
+
+  /* ── Typography ────────────────────────────────────────────────────────── */
+  --font-family:          "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-size-xs:         0.75rem;   /* 12px */
+  --font-size-sm:         0.875rem;  /* 14px */
+  --font-size-base:       1rem;      /* 16px */
+  --font-size-lg:         1.125rem;  /* 18px */
+  --font-size-xl:         1.25rem;   /* 20px */
+  --font-size-2xl:        1.5rem;    /* 24px */
+  --font-size-3xl:        1.875rem;  /* 30px */
+
+  --font-weight-normal:   400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  --line-height-tight:    1.25;
+  --line-height-normal:   1.5;
+
+  /* ── Spacing scale ─────────────────────────────────────────────────────── */
+  --space-1:  0.25rem;   /*  4px */
+  --space-2:  0.5rem;    /*  8px */
+  --space-3:  0.75rem;   /* 12px */
+  --space-4:  1rem;      /* 16px */
+  --space-5:  1.25rem;   /* 20px */
+  --space-6:  1.5rem;    /* 24px */
+  --space-8:  2rem;      /* 32px */
+  --space-10: 2.5rem;    /* 40px */
+  --space-12: 3rem;      /* 48px */
+
+  /* ── Border radius ─────────────────────────────────────────────────────── */
+  --radius-sm:   0.25rem;   /*  4px */
+  --radius-md:   0.5rem;    /*  8px */
+  --radius-lg:   0.75rem;   /* 12px */
+  --radius-xl:   1rem;      /* 16px */
+  --radius-full: 9999px;    /* Pill / circle */
+
+  /* ── Shadows ───────────────────────────────────────────────────────────── */
+  --shadow-sm:  0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md:  0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+
+  /* ── Transitions ───────────────────────────────────────────────────────── */
+  --transition-fast:   150ms ease;
+  --transition-normal: 250ms ease;
+}
