@@ -1,0 +1,20 @@
+{
+  "name": "front-end",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/STENTER-Chemical-Dosage/front-end.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/STENTER-Chemical-Dosage/front-end/issues"
+  },
+  "homepage": "https://github.com/STENTER-Chemical-Dosage/front-end#readme"
+}
