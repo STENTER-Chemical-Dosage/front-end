@@ -32,10 +32,10 @@
 window.AuthAPI = (() => {
   // ── Configuration ──────────────────────────────────────────────────────────
 
-  /** Toggle to false to use real HTTP endpoints */
-  const USE_MOCK = true;
+  /** Toggle to false to use the real PostgreSQL database via IPC */
+  const USE_MOCK = false;
 
-  /** Base URL for real API calls (ignored when USE_MOCK = true) */
+  /** Base URL for real API calls (unused — real calls go through Electron IPC) */
   const BASE_URL = "https://your-api-domain.com/api/v1";
 
   /** Simulated network latency in milliseconds */
@@ -175,27 +175,35 @@ window.AuthAPI = (() => {
     };
   }
 
-  // ── Real API implementations (stubs) ───────────────────────────────────────
-  // Uncomment and fill these out when you have a real backend.
-  // They should mirror the shape returned by the mock functions above.
+  // ── Real API implementations (via Electron IPC → PostgreSQL) ─────────────────
+  // These call the IPC handlers in src/db/database.js through the preload bridge.
+  // window.electronAPI is exposed by preload.js via contextBridge.
 
-  /*
+  /**
+   * _realLogin — Calls the main process auth:login IPC handler.
+   * The main process queries the Supabase PostgreSQL database and
+   * verifies the password hash using bcryptjs.
+   */
   async function _realLogin(email, password) {
-    // Using axios (already installed as a dependency):
-    //   const axios = require("axios");   ← works via preload bridge or bundler
-    // Using native fetch (available in Electron's Chromium renderer):
-    const res  = await fetch(`${BASE_URL}/auth/login`, {
-      method : "POST",
-      headers: { "Content-Type": "application/json" },
-      body   : JSON.stringify({ email, password }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      return { success: false, message: json.message || "Login failed", code: json.code };
-    }
-    return { success: true, data: json };
+    return await window.electronAPI.authLogin(email, password);
   }
-  */
+
+  /**
+   * _realSignup — Calls the main process auth:signup IPC handler.
+   * The main process hashes the password and inserts a new row into users.
+   */
+  async function _realSignup(name, email, password) {
+    return await window.electronAPI.authSignup(name, email, password);
+  }
+
+  /**
+   * _realRequestPasswordReset — Calls the main process auth:password-reset handler.
+   * Currently a prototype stub. Wire up an email provider in database.js
+   * to send a real reset link.
+   */
+  async function _realRequestPasswordReset(email) {
+    return await window.electronAPI.authPasswordReset(email);
+  }
 
   // ── Public API ─────────────────────────────────────────────────────────────
 

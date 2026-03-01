@@ -24,11 +24,30 @@ contextBridge.exposeInMainWorld("electronAPI", {
    */
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
 
-  // ── Add new IPC wrappers below this line ────────────────────────────────
-  //
-  // Example — reading a file through the main process:
-  //   readFile: (filePath) => ipcRenderer.invoke("read-file", filePath),
-  //
-  // Example — sending a one-way notification (no response needed):
-  //   logEvent: (msg) => ipcRenderer.send("log-event", msg),
+  // ── Auth IPC wrappers ────────────────────────────────────────────────────
+  // These call the database handlers in src/db/database.js via the main process.
+
+  /**
+   * authLogin — Authenticates a user against the PostgreSQL database.
+   * @param {string} email
+   * @param {string} password
+   */
+  authLogin: (email, password) =>
+    ipcRenderer.invoke("auth:login", { email, password }),
+
+  /**
+   * authSignup — Registers a new user in the PostgreSQL database.
+   * @param {string} name
+   * @param {string} email
+   * @param {string} password
+   */
+  authSignup: (name, email, password) =>
+    ipcRenderer.invoke("auth:signup", { name, email, password }),
+
+  /**
+   * authPasswordReset — Requests a password reset for the given email.
+   * @param {string} email
+   */
+  authPasswordReset: (email) =>
+    ipcRenderer.invoke("auth:password-reset", { email }),
 });
