@@ -13,7 +13,7 @@
  *    and expose it via preload.js contextBridge.
  */
 
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const path = require("path");
 
 // ─── Window Creation ───────────────────────────────────────────────────────────
@@ -27,12 +27,15 @@ const path = require("path");
  *  - preload script          → selectively expose safe APIs via contextBridge
  */
 function createWindow() {
+  // Remove native menu bar
+  Menu.setApplicationMenu(null);
+
   const win = new BrowserWindow({
-    width: 1000,
-    height: 700,
+    width: 1100,
+    height: 750,
     minWidth: 800,
     minHeight: 600,
-    title: "Stenter Chemical Dosage",
+    title: "LiqCalc",
     // Center the window on launch
     center: true,
     // Show only after content is ready to avoid white flash
