@@ -87,4 +87,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   batchesUpdateFull: (old_id, batch) =>
     ipcRenderer.invoke("batches:update-full", { old_id, batch }),
+
+  // ── GSM Multipliers IPC wrappers ──────────────────────────────────
+
+  /**
+   * multipliersList — Returns all GSM range multipliers from the database.
+   */
+  multipliersList: () =>
+    ipcRenderer.invoke("multipliers:list"),
+
+  /**
+   * multipliersUpdate — Updates wet/dry multiplier for a given GSM range.
+   * @param {string} gsm_range  e.g. "100-120"
+   * @param {number} wet_multiplier
+   * @param {number} dry_multiplier
+   */
+  multipliersUpdate: (gsm_range, wet_multiplier, dry_multiplier) =>
+    ipcRenderer.invoke("multipliers:update", { gsm_range, wet_multiplier, dry_multiplier }),
 });

@@ -88,7 +88,40 @@ async function initDB() {
       )
     `);
 
-    console.log("[DB] Database initialised — users, chemicals & batches tables ready.");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS gsm_multipliers (
+        gsm_range      TEXT        PRIMARY KEY,
+        range_min      NUMERIC     NOT NULL,
+        range_max      NUMERIC     NOT NULL,
+        wet_multiplier NUMERIC     NOT NULL DEFAULT 1.2,
+        dry_multiplier NUMERIC     NOT NULL DEFAULT 1.2,
+        sort_order     INTEGER     NOT NULL DEFAULT 0
+      )
+    `);
+
+    // Seed default multipliers if the table is empty
+    const { rows: existingMults } = await client.query(
+      "SELECT 1 FROM gsm_multipliers LIMIT 1"
+    );
+    if (existingMults.length === 0) {
+      const defaults = [
+        { gsm_range: "100-120", range_min: 100, range_max: 120, wet: 1.2, dry: 1.2, order: 1 },
+        { gsm_range: "120-140", range_min: 120, range_max: 140, wet: 1.4, dry: 1.4, order: 2 },
+        { gsm_range: "140-160", range_min: 140, range_max: 160, wet: 1.6, dry: 1.6, order: 3 },
+        { gsm_range: "160-180", range_min: 160, range_max: 180, wet: 1.8, dry: 1.8, order: 4 },
+        { gsm_range: "180-200", range_min: 180, range_max: 200, wet: 2.0, dry: 2.0, order: 5 },
+      ];
+      for (const d of defaults) {
+        await client.query(
+          `INSERT INTO gsm_multipliers (gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [d.gsm_range, d.range_min, d.range_max, d.wet, d.dry, d.order]
+        );
+      }
+      console.log("[DB] gsm_multipliers seeded with 5 default ranges.");
+    }
+
+    console.log("[DB] Database initialised — users, chemicals, batches & gsm_multipliers tables ready.");
   } catch (err) {
     console.error("[DB] Failed to initialise database:", err.message);
     throw err;
@@ -475,6 +508,39 @@ ipcMain.handle("batches:update-full", async (_event, { old_id, batch }) => {
     return { success: false, message: err.message };
   } finally {
     client.release();
+  }
+});
+
+// ── GSM Multiplier Handlers ────────────────────────────────────────────────────
+
+/**
+ * multipliers:list — Returns all GSM range multipliers ordered by sort_order.
+ */
+ipcMain.handle("multipliers:list", async () => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order FROM gsm_multipliers ORDER BY sort_order"
+    );
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] multipliers:list error:", err.message);
+    return { success: false, message: "Failed to load multipliers.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * multipliers:update — Updates wet_multiplier and dry_multiplier for a given gsm_range.
+ */
+ipcMain.handle("multipliers:update", async (_event, { gsm_range, wet_multiplier, dry_multiplier }) => {
+  try {
+    await pool.query(
+      "UPDATE gsm_multipliers SET wet_multiplier = $1, dry_multiplier = $2 WHERE gsm_range = $3",
+      [wet_multiplier, dry_multiplier, gsm_range]
+    );
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] multipliers:update error:", err.message);
+    return { success: false, message: "Failed to update multiplier.", code: "UNKNOWN" };
   }
 });
 

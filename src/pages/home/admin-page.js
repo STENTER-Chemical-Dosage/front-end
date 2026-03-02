@@ -320,9 +320,10 @@
   // â”€â”€ Tab Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function _renderTabBar(adminTab) {
     var tabs = [
-      { id: "analytics", label: "Analytics", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
-      { id: "chemicals", label: "Chemical Management", icon: "M9 3H5a2 2 0 00-2 2v16a2 2 0 002 2h14a2 2 0 002-2V8l-5-5zM9 3v5h5M9 13h6M9 17h4" },
-      { id: "batches",   label: "Batch Management",    icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" },
+      { id: "analytics",   label: "Analytics",           icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
+      { id: "chemicals",   label: "Chemical Management",  icon: "M9 3H5a2 2 0 00-2 2v16a2 2 0 002 2h14a2 2 0 002-2V8l-5-5zM9 3v5h5M9 13h6M9 17h4" },
+      { id: "batches",     label: "Batch Management",     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" },
+      { id: "multipliers", label: "GSM Multipliers",      icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
     ];
     var html = '<div style="background:#fff;border-bottom:1px solid #E5E7EB;padding:0 28px;display:flex">';
     tabs.forEach(function (tab) {
@@ -556,7 +557,86 @@
     return uploadCard + registryTable +
       '<style>@keyframes chemSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>';
   }
+  // ── GSM Multipliers Tab ────────────────────────────────────────────────────────
+  function _renderMultipliersTab(s) {
+    var registry = s.multiplierRegistry || [];
+    var loading  = s.multiplierRegistryLoading || false;
 
+    var inpStyle =
+      'width:110px;height:38px;border:1.5px solid ' + H.BORDER +
+      ';border-radius:8px;padding:0 10px;font-size:14px;' +
+      "font-family:'IBM Plex Mono',monospace;color:" + H.TEXT +
+      ';background:#fff;outline:none;box-sizing:border-box';
+
+    var tableBody = '';
+    if (loading) {
+      tableBody =
+        '<tr><td colspan="4" style="padding:48px;text-align:center">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:chemSpin 1s linear infinite;margin:0 auto;display:block">' +
+        '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/></svg>' +
+        '<div style="font-size:13px;color:' + H.MUTED + ';margin-top:8px">Loading multipliers\u2026</div>' +
+        '</td></tr>';
+    } else if (registry.length === 0) {
+      tableBody =
+        '<tr><td colspan="4" style="padding:40px;text-align:center;color:' + H.MUTED + ';font-size:14px">' +
+        'No multiplier data found in the database.' +
+        '</td></tr>';
+    } else {
+      registry.forEach(function (r) {
+        var range = H.escape(r.gsm_range);
+        tableBody +=
+          '<tr style="border-bottom:1px solid ' + H.BORDER + '">' +
+          // Range badge
+          '<td style="padding:14px 18px;white-space:nowrap">' +
+          '<span style="background:' + H.ACCENT_LIGHT + ';color:' + H.ACCENT +
+          ';padding:5px 14px;border-radius:7px;font-family:\'IBM Plex Mono\',monospace;font-size:13px;font-weight:700">' +
+          range + '</span>' +
+          '</td>' +
+          // Wet multiplier input
+          '<td style="padding:14px 18px">' +
+          '<input id="inp-wet-mult-' + range + '" type="number" step="0.01" min="0.01" value="' +
+          parseFloat(r.wet_multiplier).toFixed(2) + '" style="' + inpStyle + '" />' +
+          '</td>' +
+          // Dry multiplier input
+          '<td style="padding:14px 18px">' +
+          '<input id="inp-dry-mult-' + range + '" type="number" step="0.01" min="0.01" value="' +
+          parseFloat(r.dry_multiplier).toFixed(2) + '" style="' + inpStyle + '" />' +
+          '</td>' +
+          // Save button + inline error
+          '<td style="padding:14px 18px">' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+          '<button data-save-multiplier="' + range + '" style="height:36px;padding:0 20px;background:' + H.ACCENT +
+          ';color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;' +
+          "font-family:'IBM Plex Sans',sans-serif\">Save</button>" +
+          '<span id="mult-msg-' + range + '" style="font-size:12px"></span>' +
+          '</div>' +
+          '</td>' +
+          '</tr>';
+      });
+    }
+
+    return (
+      // Info card
+      '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:12px;padding:22px 24px;margin-bottom:20px">' +
+      '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + ';margin-bottom:4px">GSM Range Multipliers</div>' +
+      '<div style="font-size:12px;color:' + H.MUTED + ';line-height:1.6">' +
+      'These multipliers feed directly into the chemical dosage algorithm: <code style="background:#F3F4F6;padding:1px 6px;border-radius:4px">Total Bath = (Width \u00d7 Length) \u00d7 Multiplier</code>. ' +
+      'Set separate values for <b>Wet</b> and <b>Dry</b> cloth for each GSM range. Changes saved here take effect on the next calculation.</div>' +
+      '</div>' +
+      // Table card
+      '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:12px;overflow:hidden">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#F8F9FA">' +
+      '<th style="padding:11px 18px;text-align:left;font-weight:700;color:' + H.MUTED + ';font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid ' + H.BORDER + '">GSM Range</th>' +
+      '<th style="padding:11px 18px;text-align:left;font-weight:700;color:' + H.MUTED + ';font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid ' + H.BORDER + '">Wet Multiplier</th>' +
+      '<th style="padding:11px 18px;text-align:left;font-weight:700;color:' + H.MUTED + ';font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid ' + H.BORDER + '">Dry Multiplier</th>' +
+      '<th style="padding:11px 18px;border-bottom:1px solid ' + H.BORDER + '"></th>' +
+      '</tr></thead>' +
+      '<tbody>' + tableBody + '</tbody>' +
+      '</table></div>' +
+      '<style>@keyframes chemSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>'
+    );
+  }
   // ── Batches Tab ──────────────────────────────────────────────────────────
   function _renderBatchesTab(s) {
     var uploadState  = s.batchUploadState     || "idle";
@@ -846,9 +926,11 @@
         ? _renderBatchesTab(s)
         : s.adminTab === "chemicals"
           ? _renderChemicalsTab(s)
-          : _renderDateControls(allActiveDates, allDates) +
-            _renderBarChart(aggregated, subtitle, chemNames) +
-            _renderLineCharts(allDates, chemNames, batchDates)
+          : s.adminTab === "multipliers"
+            ? _renderMultipliersTab(s)
+            : _renderDateControls(allActiveDates, allDates) +
+              _renderBarChart(aggregated, subtitle, chemNames) +
+              _renderLineCharts(allDates, chemNames, batchDates)
       ) +
       "</div></div>" +
 

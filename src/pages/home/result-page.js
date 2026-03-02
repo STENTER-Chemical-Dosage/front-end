@@ -17,13 +17,31 @@
   var H = window.HomeApp;
 
   // ── GSM Range Multiplier lookup ─────────────────────────────────────────────
-  function _getGsmMultiplier(gsm) {
-    if (gsm > 100 && gsm <= 120) return { multiplier: 1.2, range: "100 < gsm <= 120" };
-    if (gsm > 120 && gsm <= 140) return { multiplier: 1.4, range: "120 < gsm <= 140" };
-    if (gsm > 140 && gsm <= 160) return { multiplier: 1.6, range: "140 < gsm <= 160" };
-    if (gsm > 160 && gsm <= 180) return { multiplier: 1.8, range: "160 < gsm <= 180" };
-    if (gsm > 180 && gsm <= 200) return { multiplier: 2.0, range: "180 < gsm <= 200" };
-    return null; // outside all ranges
+  // Looks up the correct multiplier for the given GSM value and cloth type (Wet/Dry).
+  // Uses the live DB registry (multiplierRegistry) when available;
+  // falls back to built-in defaults if the registry hasn't loaded yet.
+  function _getGsmMultiplier(gsm, wetDry, multiplierRegistry) {
+    var reg = multiplierRegistry && multiplierRegistry.length > 0
+      ? multiplierRegistry
+      : [
+          { range_min: 100, range_max: 120, wet_multiplier: 1.2, dry_multiplier: 1.2 },
+          { range_min: 120, range_max: 140, wet_multiplier: 1.4, dry_multiplier: 1.4 },
+          { range_min: 140, range_max: 160, wet_multiplier: 1.6, dry_multiplier: 1.6 },
+          { range_min: 160, range_max: 180, wet_multiplier: 1.8, dry_multiplier: 1.8 },
+          { range_min: 180, range_max: 200, wet_multiplier: 2.0, dry_multiplier: 2.0 },
+        ];
+    for (var i = 0; i < reg.length; i++) {
+      var r     = reg[i];
+      var rMin  = parseFloat(r.range_min);
+      var rMax  = parseFloat(r.range_max);
+      if (gsm > rMin && gsm <= rMax) {
+        var mult = wetDry === "Dry"
+          ? parseFloat(r.dry_multiplier)
+          : parseFloat(r.wet_multiplier);
+        return { multiplier: mult, range: rMin + " < gsm <= " + rMax };
+      }
+    }
+    return null; // outside all defined ranges
   }
 
   function renderResultPage() {
@@ -41,8 +59,8 @@
     // ── Step 2: Fabric Factor ─────────────────────────────────────────────────
     var D = B * C;
 
-    // ── Step 3: GSM Range Multiplier ──────────────────────────────────────────
-    var gsmResult = _getGsmMultiplier(A);
+    // ── Step 3: GSM Range Multiplier (from DB registry, keyed by cloth type) ──
+    var gsmResult = _getGsmMultiplier(A, s.wetDry, s.multiplierRegistry);
     var multiplier = gsmResult ? gsmResult.multiplier : 0;
     var gsmRange = gsmResult ? gsmResult.range : "Out of range";
 

@@ -140,7 +140,7 @@ window.HomePage = (() => {
     var adminBack = document.getElementById("btn-admin-back");
     if (adminBack) {
       adminBack.addEventListener("click", function () {
-        H.setState({ showAdmin: false, chemFetchAttempted: false, batchFetchAttempted: false });
+        H.setState({ showAdmin: false, chemFetchAttempted: false, batchFetchAttempted: false, multiplierFetchAttempted: false });
       });
     }
 
@@ -191,6 +191,9 @@ window.HomePage = (() => {
     }
     if (_s.showAdmin && (_s.adminTab === "batches" || _s.adminTab === "analytics") && !_s.batchFetchAttempted && !_s.batchRegistryLoading) {
       _fetchBatches();
+    }
+    if (_s.showAdmin && _s.adminTab === "multipliers" && !_s.multiplierFetchAttempted && !_s.multiplierRegistryLoading) {
+      _fetchMultipliers();
     }
 
     // ── Chemicals tab: drop zone ───────────────────────────────
@@ -561,6 +564,43 @@ window.HomePage = (() => {
       });
     });
 
+    // ── Multipliers tab: save button per row ─────────────────
+    document.querySelectorAll("[data-save-multiplier]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var gsmRange = btn.dataset.saveMultiplier;
+        var wetEl    = document.getElementById("inp-wet-mult-" + gsmRange);
+        var dryEl    = document.getElementById("inp-dry-mult-" + gsmRange);
+        var msgEl    = document.getElementById("mult-msg-" + gsmRange);
+        var wet = wetEl ? parseFloat(wetEl.value) : NaN;
+        var dry = dryEl ? parseFloat(dryEl.value) : NaN;
+        if (isNaN(wet) || wet <= 0 || isNaN(dry) || dry <= 0) {
+          if (msgEl) { msgEl.textContent = "Enter valid positive values."; msgEl.style.color = "#DC2626"; }
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = "Saving\u2026";
+        try {
+          var result = await window.electronAPI.multipliersUpdate(gsmRange, wet, dry);
+          if (result.success) {
+            var reg = (H.getState().multiplierRegistry || []).map(function (r) {
+              return r.gsm_range === gsmRange
+                ? Object.assign({}, r, { wet_multiplier: wet, dry_multiplier: dry })
+                : r;
+            });
+            H.setState({ multiplierRegistry: reg });
+          } else {
+            btn.disabled = false;
+            btn.textContent = "Save";
+            if (msgEl) { msgEl.textContent = result.message || "Save failed."; msgEl.style.color = "#DC2626"; }
+          }
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = "Save";
+          if (msgEl) { msgEl.textContent = "Error: " + err.message; msgEl.style.color = "#DC2626"; }
+        }
+      });
+    });
+
     // ── Live input binding (no re-render) ────────────────────
     _attachInputListeners();
 
@@ -792,6 +832,23 @@ window.HomePage = (() => {
       .catch(function (err) {
         H.setState({ batchRegistryLoading: false });
         console.error("[HomePage] batches:list error:", err.message);
+      });
+  }
+
+  function _fetchMultipliers() {
+    H.setState({ multiplierRegistryLoading: true, multiplierFetchAttempted: true });
+    window.electronAPI.multipliersList()
+      .then(function (result) {
+        if (result.success) {
+          H.setState({ multiplierRegistry: result.data, multiplierRegistryLoading: false });
+        } else {
+          H.setState({ multiplierRegistryLoading: false });
+          console.warn("[HomePage] Failed to load multipliers:", result.message);
+        }
+      })
+      .catch(function (err) {
+        H.setState({ multiplierRegistryLoading: false });
+        console.error("[HomePage] multipliers:list error:", err.message);
       });
   }
 
@@ -1042,6 +1099,8 @@ window.HomePage = (() => {
 
     // Fetch chemicals from DB so the input dropdown uses real data
     _fetchChemicals();
+    // Fetch multipliers from DB for the calculation algorithm
+    _fetchMultipliers();
 
     Logger.info("HomePage", "LiqCalc loaded", { user: user.email });
   }

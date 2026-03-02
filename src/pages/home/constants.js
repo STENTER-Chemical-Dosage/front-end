@@ -128,6 +128,10 @@ window.HomeApp = (() => {
       batchSortDir: "desc",
       expandedBatchId: null,
       editingBatch: null,
+      // ── GSM Multiplier Registry ───────────────────────────────────────────────
+      multiplierRegistry: [],       // loaded from DB on app start + admin tab open
+      multiplierRegistryLoading: false,
+      multiplierFetchAttempted: false,
     };
   }
 
