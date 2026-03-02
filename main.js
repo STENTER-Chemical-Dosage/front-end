@@ -15,6 +15,7 @@
 
 const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const path = require("path");
+const { initDB } = require("./src/db/database");
 
 // ─── Window Creation ───────────────────────────────────────────────────────────
 
@@ -66,7 +67,8 @@ function createWindow() {
 
 // ─── App Lifecycle ─────────────────────────────────────────────────────────────
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await initDB();
   createWindow();
 
   // macOS: re-create window when dock icon is clicked and no windows are open

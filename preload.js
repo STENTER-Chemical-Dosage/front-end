@@ -24,11 +24,64 @@ contextBridge.exposeInMainWorld("electronAPI", {
    */
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
 
-  // ── Add new IPC wrappers below this line ────────────────────────────────
-  //
-  // Example — reading a file through the main process:
-  //   readFile: (filePath) => ipcRenderer.invoke("read-file", filePath),
-  //
-  // Example — sending a one-way notification (no response needed):
-  //   logEvent: (msg) => ipcRenderer.send("log-event", msg),
+  // ── Auth IPC wrappers ────────────────────────────────────────────────────
+  // These call the database handlers in src/db/database.js via the main process.
+
+  /**
+   * authLogin — Authenticates a user against the PostgreSQL database.
+   * @param {string} email
+   * @param {string} password
+   */
+  authLogin: (email, password) =>
+    ipcRenderer.invoke("auth:login", { email, password }),
+
+  /**
+   * authSignup — Registers a new user in the PostgreSQL database.
+   * @param {string} name
+   * @param {string} email
+   * @param {string} password
+   */
+  authSignup: (name, email, password) =>
+    ipcRenderer.invoke("auth:signup", { name, email, password }),
+
+  /**
+   * authPasswordReset — Requests a password reset for the given email.
+   * @param {string} email
+   */
+  authPasswordReset: (email) =>
+    ipcRenderer.invoke("auth:password-reset", { email }),
+
+  // ── Chemicals IPC wrappers ───────────────────────────────────────────────
+
+  /**
+   * chemicalsList — Returns all chemicals from the database.
+   */
+  chemicalsList: () =>
+    ipcRenderer.invoke("chemicals:list"),
+
+  /**
+   * chemicalsImport — Inserts new chemicals, skipping duplicate chemical_ids.
+   * @param {Array<{ chemical_id: string, chemical_name: string, unit: string }>} rows
+   */
+  chemicalsImport: (rows) =>
+    ipcRenderer.invoke("chemicals:import", { rows }),
+
+  chemicalsDelete: (chemical_id) =>
+    ipcRenderer.invoke("chemicals:delete", { chemical_id }),
+
+  chemicalsUpdate: (old_id, new_id, new_name) =>
+    ipcRenderer.invoke("chemicals:update", { old_id, new_id, new_name }),
+
+  // ── Batches IPC wrappers ─────────────────────────────────────────────────
+  batchesList: () =>
+    ipcRenderer.invoke("batches:list"),
+
+  batchesImport: (rows) =>
+    ipcRenderer.invoke("batches:import", { rows }),
+
+  batchesDelete: (batch_id) =>
+    ipcRenderer.invoke("batches:delete", { batch_id }),
+
+  batchesUpdateFull: (old_id, batch) =>
+    ipcRenderer.invoke("batches:update-full", { old_id, batch }),
 });
