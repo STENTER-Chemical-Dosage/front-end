@@ -109,7 +109,20 @@
     <script src="src/pages/login.js"></script>        <!-- window.LoginPage    -->
     <script src="src/pages/signup.js"></script>       <!-- window.SignupPage   -->
     <script src="src/pages/reset.js"></script>        <!-- window.ResetPage    -->
-    <script src="src/pages/home.js"></script>         <!-- window.HomePage     -->
+
+    <!-- SheetJS — local bundle for xlsx/xls parsing (CSP-safe) ──── -->
+    <script src="src/libs/xlsx.full.min.js"></script>        <!-- window.XLSX -->
+
+    <!-- 4a. Home page (split into sub-modules — load in order) ─── -->
+    <script src="src/pages/home/constants.js"></script>   <!-- window.HomeApp (namespace + tokens + state) -->
+    <script src="src/pages/home/icons.js"></script>       <!-- HomeApp.icons       -->
+    <script src="src/pages/home/styles.js"></script>      <!-- HomeApp.styles      -->
+    <script src="src/pages/home/navbar.js"></script>      <!-- HomeApp.renderNavbar -->
+    <script src="src/pages/home/input-page.js"></script>  <!-- HomeApp.renderInputPage   -->
+    <script src="src/pages/home/confirm-page.js"></script><!-- HomeApp.renderConfirmPage  -->
+    <script src="src/pages/home/result-page.js"></script> <!-- HomeApp.renderResultPage   -->
+    <script src="src/pages/home/admin-page.js"></script>  <!-- HomeApp.renderAdmin        -->
+    <script src="src/pages/home/index.js"></script>       <!-- window.HomePage (orchestrator) -->
 
     <!-- 5. App bootstrap — must be LAST ───────────────────────────── -->
     <script src="renderer.js"></script>

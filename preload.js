@@ -50,4 +50,38 @@ contextBridge.exposeInMainWorld("electronAPI", {
    */
   authPasswordReset: (email) =>
     ipcRenderer.invoke("auth:password-reset", { email }),
+
+  // ── Chemicals IPC wrappers ───────────────────────────────────────────────
+
+  /**
+   * chemicalsList — Returns all chemicals from the database.
+   */
+  chemicalsList: () =>
+    ipcRenderer.invoke("chemicals:list"),
+
+  /**
+   * chemicalsImport — Inserts new chemicals, skipping duplicate chemical_ids.
+   * @param {Array<{ chemical_id: string, chemical_name: string, unit: string }>} rows
+   */
+  chemicalsImport: (rows) =>
+    ipcRenderer.invoke("chemicals:import", { rows }),
+
+  chemicalsDelete: (chemical_id) =>
+    ipcRenderer.invoke("chemicals:delete", { chemical_id }),
+
+  chemicalsUpdate: (old_id, new_id, new_name) =>
+    ipcRenderer.invoke("chemicals:update", { old_id, new_id, new_name }),
+
+  // ── Batches IPC wrappers ─────────────────────────────────────────────────
+  batchesList: () =>
+    ipcRenderer.invoke("batches:list"),
+
+  batchesImport: (rows) =>
+    ipcRenderer.invoke("batches:import", { rows }),
+
+  batchesDelete: (batch_id) =>
+    ipcRenderer.invoke("batches:delete", { batch_id }),
+
+  batchesUpdateFull: (old_id, batch) =>
+    ipcRenderer.invoke("batches:update-full", { old_id, batch }),
 });
