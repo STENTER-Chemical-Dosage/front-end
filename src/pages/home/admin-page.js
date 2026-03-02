@@ -324,6 +324,7 @@
       { id: "chemicals",   label: "Chemical Management",  icon: "M9 3H5a2 2 0 00-2 2v16a2 2 0 002 2h14a2 2 0 002-2V8l-5-5zM9 3v5h5M9 13h6M9 17h4" },
       { id: "batches",     label: "Batch Management",     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" },
       { id: "multipliers", label: "GSM Multipliers",      icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+      { id: "production",  label: "Production Log",       icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" },
     ];
     var html = '<div style="background:#fff;border-bottom:1px solid #E5E7EB;padding:0 28px;display:flex">';
     tabs.forEach(function (tab) {
@@ -928,9 +929,11 @@
           ? _renderChemicalsTab(s)
           : s.adminTab === "multipliers"
             ? _renderMultipliersTab(s)
-            : _renderDateControls(allActiveDates, allDates) +
-              _renderBarChart(aggregated, subtitle, chemNames) +
-              _renderLineCharts(allDates, chemNames, batchDates)
+            : s.adminTab === "production"
+              ? _renderProductionTab(s)
+              : _renderDateControls(allActiveDates, allDates) +
+                _renderBarChart(aggregated, subtitle, chemNames) +
+                _renderLineCharts(allDates, chemNames, batchDates)
       ) +
       "</div></div>" +
 
@@ -1043,4 +1046,197 @@
   }
 
   H.renderAdmin = renderAdmin;
+
+  // ── Production Records Tab ───────────────────────────────────────────────
+  function _renderProductionTab(s) {
+    var registry  = s.prodRegistry        || [];
+    var loading   = s.prodRegistryLoading || false;
+    var search    = s.prodSearch          || "";
+    var sortCol   = s.prodSortCol         || "submitted_at";
+    var sortDir   = s.prodSortDir         || "desc";
+    var expandedId = s.expandedProdId     || null;
+    var selectedIds = s.prodSelectedIds   || [];
+
+    var filtered = registry.filter(function (r) {
+      var q = search.toLowerCase();
+      return (r.batch_id    || "").toLowerCase().indexOf(q) !== -1 ||
+             (r.stenter     || "").toLowerCase().indexOf(q) !== -1 ||
+             (r.user_name   || "").toLowerCase().indexOf(q) !== -1 ||
+             (String(r.id)        ).indexOf(q) !== -1;
+    });
+    filtered = filtered.slice().sort(function (a, b) {
+      var av, bv;
+      if (sortCol === "submitted_at" || sortCol === "schedule_date") {
+        av = a[sortCol] || "";
+        bv = b[sortCol] || "";
+      } else if (sortCol === "id" || sortCol === "t_value") {
+        av = parseFloat(a[sortCol]) || 0;
+        bv = parseFloat(b[sortCol]) || 0;
+        return sortDir === "asc" ? av - bv : bv - av;
+      } else {
+        av = (a[sortCol] || "").toLowerCase();
+        bv = (b[sortCol] || "").toLowerCase();
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ?  1 : -1;
+      return 0;
+    });
+
+    // ── Select all checkbox state ──
+    var allVisibleIds = filtered.map(function (r) { return r.id; });
+    var allSelected = allVisibleIds.length > 0 && allVisibleIds.every(function (id) {
+      return selectedIds.indexOf(id) !== -1;
+    });
+
+    var inputSm = 'height:36px;border:1.5px solid ' + H.BORDER + ';border-radius:8px;padding:0 12px;font-size:13px;font-family:\'IBM Plex Sans\',sans-serif;color:' + H.TEXT + ';background:#FAFBFC;outline:none;';
+
+    var tableBody = "";
+    if (loading) {
+      tableBody = '<tr><td colspan="9" style="padding:40px;text-align:center">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:chemSpin 1s linear infinite;margin:0 auto;display:block">' +
+        '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/></svg>' +
+        '<div style="font-size:13px;color:' + H.MUTED + ';margin-top:8px">Loading production records\u2026</div></td></tr>';
+    } else if (filtered.length === 0) {
+      tableBody = '<tr><td colspan="9" style="padding:36px;text-align:center;color:' + H.MUTED + ';font-size:14px">' +
+        (registry.length === 0 ? 'No production records yet. Workers submit records from the calculation result page.' : 'No records match your search.') + '</td></tr>';
+    } else {
+      filtered.forEach(function (r, i) {
+        var isExpanded = expandedId === r.id;
+        var isChecked = selectedIds.indexOf(r.id) !== -1;
+        var submittedDate = r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '\u2014';
+        var submittedTime = r.submitted_at ? new Date(r.submitted_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+        tableBody +=
+          '<tr style="border-bottom:1px solid ' + H.BORDER + ';background:' + (i % 2 === 0 ? '#fff' : '#FAFBFC') + '">' +
+          '<td style="padding:10px 8px;width:32px">' +
+          '<input type="checkbox" data-prod-select="' + r.id + '" ' + (isChecked ? 'checked' : '') +
+          ' style="width:16px;height:16px;cursor:pointer;accent-color:' + H.ACCENT + '" /></td>' +
+          '<td style="padding:10px 8px;width:32px">' +
+          '<button data-prod-expand="' + r.id + '" title="' + (isExpanded ? 'Collapse' : 'View details') + '" style="height:24px;width:24px;background:' + (isExpanded ? H.ACCENT_LIGHT : 'transparent') + ';border:1px solid ' + (isExpanded ? H.ACCENT : H.BORDER) + ';border-radius:5px;cursor:pointer;font-size:10px;display:inline-flex;align-items:center;justify-content:center;color:' + (isExpanded ? H.ACCENT : H.MUTED) + ';font-weight:700;padding:0">' + (isExpanded ? '\u25bc' : '\u25b6') + '</button></td>' +
+          '<td style="padding:10px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;font-weight:700;color:' + H.ACCENT + '">#' + r.id + '</td>' +
+          '<td style="padding:10px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;font-weight:700;color:' + H.TEXT + '">' + H.escape(r.batch_id || '\u2014') + '</td>' +
+          '<td style="padding:10px 12px;font-size:12px">' + H.escape(r.user_name || 'Unknown') + '</td>' +
+          '<td style="padding:10px 12px;font-size:12px;color:' + H.MUTED + ';white-space:nowrap">' + submittedDate + (submittedTime ? '<br><span style="font-size:11px">' + submittedTime + '</span>' : '') + '</td>' +
+          '<td style="padding:10px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:14px;font-weight:700;text-align:right">' + (parseFloat(r.t_value) || 0).toLocaleString() + ' L</td>' +
+          '<td style="padding:10px 12px">' + H.escape(r.stenter || '\u2014') + '</td>' +
+          '<td style="padding:10px 8px">' +
+          '<button data-prod-remove="' + r.id + '" style="height:28px;width:28px;background:transparent;border:1px solid #FECACA;border-radius:6px;font-size:15px;cursor:pointer;color:#DC2626;display:inline-flex;align-items:center;justify-content:center;padding:0">&times;</button>' +
+          '</td></tr>';
+
+        if (isExpanded) {
+          var chems = Array.isArray(r.chemicals) ? r.chemicals : [];
+          var chemRows = chems.length === 0
+            ? '<tr><td colspan="4" style="padding:14px;text-align:center;color:' + H.MUTED + ';font-size:13px">No chemicals in this record.</td></tr>'
+            : chems.map(function (c) {
+                return '<tr style="border-bottom:1px solid #F3F4F6">' +
+                  '<td style="padding:8px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;font-weight:700;color:' + H.ACCENT + '">' + H.escape(c.chemical_id || '\u2014') + '</td>' +
+                  '<td style="padding:8px 12px;font-weight:500">' + H.escape(c.chemical_name || '\u2014') + '</td>' +
+                  '<td style="padding:8px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:12px">' + (parseFloat(c.density) || 0) + ' g/L</td>' +
+                  '<td style="padding:8px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;font-weight:700;color:' + H.TEXT + '">' + (parseFloat(c.dosage) || 0).toFixed(2) + '</td>' +
+                  '</tr>';
+              }).join('');
+
+          var detailPairs = [
+            ['Cloth Type', r.wet_dry || '\u2014'],
+            ['GSM', r.gsm ? r.gsm + ' g/m\u00b2' : '\u2014'],
+            ['Width', r.width ? r.width + ' cm' : '\u2014'],
+            ['Length', r.length ? r.length + ' m' : '\u2014'],
+            ['Cloth Weight', r.cloth_weight ? r.cloth_weight + ' kg' : '\u2014'],
+            ['Schedule Date', r.schedule_date || '\u2014'],
+            ['Fabric Factor', r.fabric_factor != null ? parseFloat(r.fabric_factor).toLocaleString() : '\u2014'],
+            ['GSM Range', r.gsm_range || '\u2014'],
+            ['Multiplier', r.multiplier != null ? '\u00d7 ' + r.multiplier : '\u2014'],
+            ['Total Bath (raw)', r.total_bath != null ? parseFloat(r.total_bath).toLocaleString() : '\u2014'],
+            ['T Value (ceil 25)', r.t_value ? parseFloat(r.t_value).toLocaleString() + ' L' : '\u2014'],
+            ['Bath Concentration', r.bath_concentration != null ? parseFloat(r.bath_concentration).toFixed(2) : '\u2014'],
+          ];
+          var detailHtml = detailPairs.map(function (p) {
+            return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F3F4F6">' +
+              '<span style="font-size:12px;color:' + H.MUTED + '">' + p[0] + '</span>' +
+              '<span style="font-size:12px;font-weight:600;color:' + H.TEXT + ';font-family:\'IBM Plex Mono\',monospace">' + p[1] + '</span></div>';
+          }).join('');
+
+          tableBody +=
+            '<tr style="background:#F8FAFF">' +
+            '<td colspan="9" style="padding:0;border-bottom:2px solid ' + H.ACCENT + '">' +
+            '<div style="padding:16px 20px 20px">' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">' +
+
+            // Left column: calculation details
+            '<div>' +
+            '<div style="font-size:12px;font-weight:700;color:' + H.ACCENT + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">' +
+            '\u2198 Calculation Details</div>' +
+            '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:12px 16px">' + detailHtml + '</div>' +
+            '</div>' +
+
+            // Right column: chemicals table
+            '<div>' +
+            '<div style="font-size:12px;font-weight:700;color:' + H.ACCENT + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">' +
+            '\u2198 Chemical Dosages (' + chems.length + ')</div>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden">' +
+            '<thead><tr style="background:#F3F4F6">' +
+            ['Chemical ID','Chemical Name','Density (g/L)','Dosage'].map(function (h) {
+              return '<th style="padding:8px 14px;text-align:left;font-weight:700;color:' + H.MUTED + ';font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #E5E7EB;white-space:nowrap">' + h + '</th>';
+            }).join('') +
+            '</tr></thead><tbody>' + chemRows + '</tbody></table>' +
+            '</div>' +
+
+            '</div></div></td></tr>';
+        }
+      });
+    }
+
+    var prodSortCols = [
+      { label: '',           key: null },
+      { label: '',           key: null },
+      { label: 'Record',     key: 'id' },
+      { label: 'Batch ID',   key: 'batch_id' },
+      { label: 'Operator',   key: 'user_name' },
+      { label: 'Submitted',  key: 'submitted_at' },
+      { label: 'T Value',    key: 't_value' },
+      { label: 'Stenter',    key: 'stenter' },
+      { label: 'Delete',     key: null },
+    ];
+
+    var selectedCount = selectedIds.length;
+
+    var registryTable =
+      '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:12px;padding:24px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">' +
+      '<div>' +
+      '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + '">Production Log</div>' +
+      '<div style="font-size:12px;color:' + H.MUTED + ';margin-top:2px">' + (loading ? 'Loading\u2026' : filtered.length + ' of ' + registry.length + ' records') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center">' +
+      (selectedCount > 0
+        ? '<button id="btn-prod-download" style="height:36px;padding:0 18px;background:' + H.ACCENT + ';color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif;display:flex;align-items:center;gap:6px">' +
+          '<svg width="14" height="14" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>' +
+          'Download ' + selectedCount + ' Record' + (selectedCount > 1 ? 's' : '') + ' (.xlsx)</button>'
+        : '') +
+      '<div style="position:relative">' +
+      '<svg width="14" height="14" fill="none" stroke="' + H.MUTED + '" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:10px;top:50%;transform:translateY(-50%)">' +
+      '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+      '<input id="prod-search" placeholder="Search ID, batch, operator\u2026" value="' + H.escape(search) + '" style="' + inputSm + 'padding-left:30px;padding-right:12px;width:230px" />' +
+      '</div></div></div>' +
+      '<div style="overflow-x:auto">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#F8F9FA">' +
+      prodSortCols.map(function (col, ci) {
+        // First column: select-all checkbox
+        if (ci === 0) {
+          return '<th style="padding:10px 8px;width:32px;border-bottom:1px solid ' + H.BORDER + '">' +
+            '<input type="checkbox" id="prod-select-all" ' + (allSelected ? 'checked' : '') +
+            ' style="width:16px;height:16px;cursor:pointer;accent-color:' + H.ACCENT + '" /></th>';
+        }
+        if (!col.key) return '<th style="padding:10px 8px;text-align:left;font-weight:700;color:' + H.MUTED + ';font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid ' + H.BORDER + ';white-space:nowrap">' + col.label + '</th>';
+        var isActive = sortCol === col.key;
+        var arrow = isActive ? (sortDir === 'asc' ? ' \u25b2' : ' \u25bc') : ' <span style="opacity:0.25">\u25b2</span>';
+        return '<th data-prod-sort-col="' + col.key + '" style="padding:10px 8px;text-align:left;font-weight:700;color:' + (isActive ? H.ACCENT : H.MUTED) + ';font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid ' + H.BORDER + ';white-space:nowrap;cursor:pointer;user-select:none">' + col.label + arrow + '</th>';
+      }).join('') +
+      '</tr></thead>' +
+      '<tbody>' + tableBody + '</tbody>' +
+      '</table></div></div>';
+
+    return registryTable +
+      '<style>@keyframes chemSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>';
+  }
 })();

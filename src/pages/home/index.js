@@ -120,7 +120,7 @@ window.HomePage = (() => {
     if (cancelResult) cancelResult.addEventListener("click", _resetToPage1);
 
     var submitResult = document.getElementById("btn-submit-result");
-    if (submitResult) submitResult.addEventListener("click", _resetToPage1);
+    if (submitResult) submitResult.addEventListener("click", _handleSubmitRecord);
 
     // ── Add chemical button ──────────────────────────────────
     var addChemBtn = document.getElementById("btn-add-chem");
@@ -181,6 +181,7 @@ window.HomePage = (() => {
           adminTab: tab,
           uploadState: "idle", uploadMsg: "", uploadedRows: [], importResult: null, chemFetchAttempted: false,
           batchUploadState: "idle", batchUploadMsg: "", batchUploadedRows: [], batchImportResult: null, batchFetchAttempted: false,
+          prodFetchAttempted: false,
         });
       });
     });
@@ -194,6 +195,9 @@ window.HomePage = (() => {
     }
     if (_s.showAdmin && _s.adminTab === "multipliers" && !_s.multiplierFetchAttempted && !_s.multiplierRegistryLoading) {
       _fetchMultipliers();
+    }
+    if (_s.showAdmin && _s.adminTab === "production" && !_s.prodFetchAttempted && !_s.prodRegistryLoading) {
+      _fetchProductionRecords();
     }
 
     // ── Chemicals tab: drop zone ───────────────────────────────
@@ -564,6 +568,176 @@ window.HomePage = (() => {
       });
     });
 
+    // ── Production tab: expand row ────────────────────────────
+    document.querySelectorAll("[data-prod-expand]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var recId = parseInt(btn.dataset.prodExpand, 10);
+        var cur = H.getState().expandedProdId;
+        H.setState({ expandedProdId: cur === recId ? null : recId });
+      });
+    });
+
+    // ── Production tab: delete ────────────────────────────────
+    document.querySelectorAll("[data-prod-remove]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var recId = parseInt(btn.dataset.prodRemove, 10);
+        if (!confirm("Delete production record #" + recId + "?\n\nThis action cannot be undone.")) return;
+        try {
+          var result = await window.electronAPI.productionDelete(recId);
+          if (result.success) {
+            // Remove from local state immediately
+            var cur = H.getState();
+            var updated = (cur.prodRegistry || []).filter(function (r) { return r.id !== recId; });
+            var newSelected = (cur.prodSelectedIds || []).filter(function (id) { return id !== recId; });
+            H.setState({ prodRegistry: updated, prodSelectedIds: newSelected });
+          } else {
+            alert("Failed to delete: " + (result.message || "Unknown error."));
+          }
+        } catch (err) {
+          alert("Delete error: " + err.message);
+        }
+      });
+    });
+
+    // ── Production tab: individual select checkbox ────────────
+    document.querySelectorAll("[data-prod-select]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var recId = parseInt(cb.dataset.prodSelect, 10);
+        var cur = H.getState().prodSelectedIds || [];
+        if (cb.checked) {
+          if (cur.indexOf(recId) === -1) cur = cur.concat([recId]);
+        } else {
+          cur = cur.filter(function (id) { return id !== recId; });
+        }
+        H.setState({ prodSelectedIds: cur });
+      });
+    });
+
+    // ── Production tab: select-all checkbox ───────────────────
+    var prodSelectAll = document.getElementById("prod-select-all");
+    if (prodSelectAll) {
+      prodSelectAll.addEventListener("change", function () {
+        var s = H.getState();
+        var registry = s.prodRegistry || [];
+        var search = (s.prodSearch || "").toLowerCase();
+        var visibleIds = registry.filter(function (r) {
+          return (r.batch_id || "").toLowerCase().indexOf(search) !== -1 ||
+                 (r.stenter  || "").toLowerCase().indexOf(search) !== -1 ||
+                 (r.user_name || "").toLowerCase().indexOf(search) !== -1 ||
+                 String(r.id).indexOf(search) !== -1;
+        }).map(function (r) { return r.id; });
+        if (prodSelectAll.checked) {
+          // Merge visible IDs with already selected
+          var merged = (s.prodSelectedIds || []).slice();
+          visibleIds.forEach(function (id) { if (merged.indexOf(id) === -1) merged.push(id); });
+          H.setState({ prodSelectedIds: merged });
+        } else {
+          // Remove visible IDs from selection
+          var remaining = (s.prodSelectedIds || []).filter(function (id) { return visibleIds.indexOf(id) === -1; });
+          H.setState({ prodSelectedIds: remaining });
+        }
+      });
+    }
+
+    // ── Production tab: search (debounced) ────────────────────
+    var prodSearch = document.getElementById("prod-search");
+    if (prodSearch) {
+      var _prodSearchTimer = null;
+      prodSearch.addEventListener("input", function (e) {
+        var val = e.target.value;
+        H.getState().prodSearch = val;
+        clearTimeout(_prodSearchTimer);
+        _prodSearchTimer = setTimeout(function () { H.setState({ prodSearch: val }); }, 260);
+      });
+    }
+
+    // ── Production tab: column sort ───────────────────────────
+    document.querySelectorAll("[data-prod-sort-col]").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var col = th.dataset.prodSortCol;
+        var cur = H.getState();
+        var newDir = (cur.prodSortCol === col && cur.prodSortDir === "asc") ? "desc" : "asc";
+        H.setState({ prodSortCol: col, prodSortDir: newDir });
+      });
+    });
+
+    // ── Production tab: XLSX download ─────────────────────────
+    var prodDownloadBtn = document.getElementById("btn-prod-download");
+    if (prodDownloadBtn) {
+      prodDownloadBtn.addEventListener("click", function () {
+        var XLSX = window.XLSX;
+        if (!XLSX) { alert("XLSX library not available. Please restart the app."); return; }
+        var s = H.getState();
+        var selectedIds = s.prodSelectedIds || [];
+        var registry = s.prodRegistry || [];
+        var selected = registry.filter(function (r) { return selectedIds.indexOf(r.id) !== -1; });
+        if (selected.length === 0) return;
+
+        // Flatten records into rows (one row per chemical per record)
+        var rows = [];
+        selected.forEach(function (r) {
+          var chemList = Array.isArray(r.chemicals) ? r.chemicals : [];
+          if (chemList.length === 0) {
+            rows.push({
+              "Record ID":        r.id,
+              "Batch ID":         r.batch_id || "",
+              "Operator":         r.user_name || "",
+              "Submitted":        r.submitted_at ? new Date(r.submitted_at).toLocaleString("en-GB") : "",
+              "Schedule Date":    r.schedule_date || "",
+              "Stenter":          r.stenter || "",
+              "Wet/Dry":          r.wet_dry || "",
+              "GSM":              r.gsm || "",
+              "Width (cm)":       r.width || "",
+              "Length (m)":       r.length || "",
+              "Cloth Weight (kg)": r.cloth_weight || "",
+              "Fabric Factor":    r.fabric_factor || "",
+              "GSM Range":        r.gsm_range || "",
+              "Multiplier":       r.multiplier || "",
+              "Total Bath (raw)": r.total_bath || "",
+              "T Value (L)":      r.t_value || "",
+              "Bath Concentration": r.bath_concentration || "",
+              "Chemical ID":      "",
+              "Chemical Name":    "",
+              "Density (g/L)":    "",
+              "Dosage":           "",
+            });
+          } else {
+            chemList.forEach(function (c) {
+              rows.push({
+                "Record ID":        r.id,
+                "Batch ID":         r.batch_id || "",
+                "Operator":         r.user_name || "",
+                "Submitted":        r.submitted_at ? new Date(r.submitted_at).toLocaleString("en-GB") : "",
+                "Schedule Date":    r.schedule_date || "",
+                "Stenter":          r.stenter || "",
+                "Wet/Dry":          r.wet_dry || "",
+                "GSM":              r.gsm || "",
+                "Width (cm)":       r.width || "",
+                "Length (m)":       r.length || "",
+                "Cloth Weight (kg)": r.cloth_weight || "",
+                "Fabric Factor":    r.fabric_factor || "",
+                "GSM Range":        r.gsm_range || "",
+                "Multiplier":       r.multiplier || "",
+                "Total Bath (raw)": r.total_bath || "",
+                "T Value (L)":      r.t_value || "",
+                "Bath Concentration": r.bath_concentration || "",
+                "Chemical ID":      c.chemical_id || "",
+                "Chemical Name":    c.chemical_name || "",
+                "Density (g/L)":    c.density || "",
+                "Dosage":           c.dosage || "",
+              });
+            });
+          }
+        });
+
+        var ws = XLSX.utils.json_to_sheet(rows);
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Production Records");
+        var fileName = "production_records_" + new Date().toISOString().slice(0, 10) + ".xlsx";
+        XLSX.writeFile(wb, fileName);
+      });
+    }
+
     // ── Multipliers tab: save button per row ─────────────────
     document.querySelectorAll("[data-save-multiplier]").forEach(function (btn) {
       btn.addEventListener("click", async function () {
@@ -619,7 +793,7 @@ window.HomePage = (() => {
       { id: "inp-length",       key: "length" },
       { id: "inp-weight",       key: "clothWeight" },
       { id: "inp-chem-select",     key: "selectedChemical", event: "change" },
-      { id: "inp-chem-percentage",  key: "chemicalPercentage" },
+      { id: "inp-chem-density",  key: "chemicalDensity" },
     ];
 
     bindings.forEach(function (b) {
@@ -688,7 +862,7 @@ window.HomePage = (() => {
       { id: "inp-length",       key: "length" },
       { id: "inp-weight",       key: "clothWeight" },
       { id: "inp-chem-select",     key: "selectedChemical" },
-      { id: "inp-chem-percentage",  key: "chemicalPercentage" },
+      { id: "inp-chem-density",  key: "chemicalDensity" },
     ];
     fields.forEach(function (f) {
       var el = document.getElementById(f.id);
@@ -749,11 +923,12 @@ window.HomePage = (() => {
           }
           // Map batch chemicals to the format used by the calculation
           var chems = (b.chemicals || []).map(function (c) {
-            return { name: c.chemical_name || c.chemical_id, percentage: parseFloat(c.density) || 0 };
+            return { name: c.chemical_name || c.chemical_id, chemical_id: c.chemical_id || "", density: parseFloat(c.density) || 0 };
           });
           // Populate state with DB data and advance to confirm page
           H.setState({
             fetchingBatch: false,
+            scheduleDate: b.schedule_date || "",
             stenter: b.stenter || "",
             gsm: b.gsm || "",
             width: b.width || "",
@@ -781,23 +956,107 @@ window.HomePage = (() => {
     _syncInputState();
 
     var s = H.getState();
-    var percentage = parseFloat(s.chemicalPercentage);
-    if (!percentage || percentage <= 0) {
+    var density = parseFloat(s.chemicalDensity);
+    if (!density || density <= 0) {
       var newErrors = Object.assign({}, s.errors || {});
-      newErrors.chemicalPercentage = "Enter a valid positive percentage";
+      newErrors.chemicalDensity = "Enter a valid positive density (g/L)";
       H.setState({ errors: newErrors });
       return;
     }
 
     var chemicals = s.chemicals.slice();
-    chemicals.push({ name: s.selectedChemical, percentage: percentage });
-    H.setState({ chemicals: chemicals, chemicalPercentage: "", errors: {} });
+    chemicals.push({ name: s.selectedChemical, density: density });
+    H.setState({ chemicals: chemicals, chemicalDensity: "", errors: {} });
   }
 
   // ── Reset everything and go back to Page 1 ────────────────────────────────
   function _resetToPage1() {
     H.resetState();
     _render();
+  }
+
+  // ── Submit production record handler ─────────────────────────────────────
+  function _handleSubmitRecord() {
+    var s = H.getState();
+    var calc = s._calcResult;
+    if (!calc) {
+      console.error("[HomePage] No calculation result available for submission.");
+      return;
+    }
+
+    var session = AuthGuard.getSession();
+    if (!session || !session.user) {
+      console.error("[HomePage] No user session — cannot submit.");
+      return;
+    }
+
+    var record = {
+      user_id: session.user.id,
+      batch_id: s.batchNumber || null,
+      schedule_date: s.scheduleDate || null,
+      stenter: s.stenter || null,
+      wet_dry: s.wetDry,
+      gsm: parseFloat(s.gsm) || 0,
+      width: parseFloat(s.width) || 0,
+      length: parseFloat(s.length) || 0,
+      cloth_weight: parseFloat(s.clothWeight) || 0,
+      fabric_factor: calc.fabricFactor,
+      gsm_range: calc.gsmRange,
+      multiplier: calc.multiplier,
+      total_bath: calc.totalBath,
+      t_value: calc.tValue,
+      bath_concentration: calc.bathConcentration,
+      chemicals: calc.chemDosages.map(function (c) {
+        return { name: c.name, chemical_id: c.chemical_id || "", density: c.density, dosage: c.dosage };
+      }),
+    };
+
+    // Disable submit button during save
+    var submitBtn = document.getElementById("btn-submit-result");
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting…";
+      submitBtn.style.opacity = "0.6";
+      submitBtn.style.cursor = "not-allowed";
+    }
+
+    window.electronAPI.productionSubmit(record)
+      .then(function (result) {
+        if (result.success) {
+          // Show brief success feedback before resetting
+          if (submitBtn) {
+            submitBtn.textContent = "✓ Submitted!";
+            submitBtn.style.background = "#16A34A";
+          }
+          setTimeout(function () {
+            _resetToPage1();
+          }, 800);
+        } else {
+          console.error("[HomePage] production:submit failed:", result.message);
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "✓ Submit Record";
+            submitBtn.style.opacity = "1";
+            submitBtn.style.cursor = "pointer";
+          }
+          // Show error near the button
+          var errDiv = document.createElement("div");
+          errDiv.style.cssText = "color:#C0392B;font-size:13px;text-align:center;margin-top:8px";
+          errDiv.textContent = result.message || "Failed to submit. Please try again.";
+          if (submitBtn && submitBtn.parentNode && submitBtn.parentNode.parentNode) {
+            submitBtn.parentNode.parentNode.appendChild(errDiv);
+          }
+        }
+      })
+      .catch(function (err) {
+        console.error("[HomePage] production:submit error:", err.message);
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "✓ Submit Record";
+          submitBtn.style.opacity = "1";
+          submitBtn.style.cursor = "pointer";
+        }
+      });
   }
 
   // ── Fetch chemicals from database ───────────────────────────────────
@@ -849,6 +1108,23 @@ window.HomePage = (() => {
       .catch(function (err) {
         H.setState({ multiplierRegistryLoading: false });
         console.error("[HomePage] multipliers:list error:", err.message);
+      });
+  }
+
+  function _fetchProductionRecords() {
+    H.setState({ prodRegistryLoading: true, prodFetchAttempted: true });
+    window.electronAPI.productionList()
+      .then(function (result) {
+        if (result.success) {
+          H.setState({ prodRegistry: result.data, prodRegistryLoading: false });
+        } else {
+          H.setState({ prodRegistryLoading: false });
+          console.warn("[HomePage] Failed to load production records:", result.message);
+        }
+      })
+      .catch(function (err) {
+        H.setState({ prodRegistryLoading: false });
+        console.error("[HomePage] production:list error:", err.message);
       });
   }
 

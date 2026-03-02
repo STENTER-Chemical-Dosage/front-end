@@ -24,12 +24,22 @@ const bcrypt      = require("bcryptjs");
  * pg connection pool — using individual params instead of a URL string
  * so special characters in the password (e.g. semicolon) are handled safely.
  */
+// const pool = new Pool({
+//   user    : "postgres",
+//   password: "stenterchemical;dosage",
+//   host    : "db.svetohbyasqzinlzvvky.supabase.co",
+//   port    : 5432,
+//   database: "postgres",
+//   ssl     : { rejectUnauthorized: false }, // required for Supabase hosted Postgres
+// });
+
 const pool = new Pool({
-  user    : "postgres",
+  user    : "postgres.svetohbyasqzinlzvvky",
   password: "stenterchemical;dosage",
-  host    : "db.svetohbyasqzinlzvvky.supabase.co",
+  host    : "aws-1-ap-northeast-2.pooler.supabase.com",
   port    : 5432,
   database: "postgres",
+  pool_mode: "session",
   ssl     : { rejectUnauthorized: false }, // required for Supabase hosted Postgres
 });
 
@@ -99,6 +109,39 @@ async function initDB() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS production_records (
+        id                SERIAL      PRIMARY KEY,
+        user_id           UUID        NOT NULL,
+        batch_id          TEXT,
+        schedule_date     TEXT,
+        stenter           TEXT,
+        wet_dry           TEXT        NOT NULL,
+        gsm               NUMERIC,
+        width             NUMERIC,
+        length            NUMERIC,
+        cloth_weight      NUMERIC,
+        fabric_factor     NUMERIC,
+        gsm_range         TEXT,
+        multiplier        NUMERIC,
+        total_bath        NUMERIC,
+        t_value           NUMERIC     NOT NULL,
+        bath_concentration NUMERIC,
+        submitted_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS production_chemicals (
+        id            SERIAL  PRIMARY KEY,
+        record_id     INTEGER NOT NULL REFERENCES production_records(id) ON DELETE CASCADE,
+        chemical_id   TEXT    NOT NULL DEFAULT '',
+        chemical_name TEXT    NOT NULL,
+        density       NUMERIC NOT NULL,
+        dosage        NUMERIC NOT NULL
+      )
+    `);
+
     // Seed default multipliers if the table is empty
     const { rows: existingMults } = await client.query(
       "SELECT 1 FROM gsm_multipliers LIMIT 1"
@@ -121,7 +164,7 @@ async function initDB() {
       console.log("[DB] gsm_multipliers seeded with 5 default ranges.");
     }
 
-    console.log("[DB] Database initialised — users, chemicals, batches & gsm_multipliers tables ready.");
+    console.log("[DB] Database initialised — users, chemicals, batches, gsm_multipliers & production_records tables ready.");
   } catch (err) {
     console.error("[DB] Failed to initialise database:", err.message);
     throw err;
@@ -541,6 +584,116 @@ ipcMain.handle("multipliers:update", async (_event, { gsm_range, wet_multiplier,
   } catch (err) {
     console.error("[DB] multipliers:update error:", err.message);
     return { success: false, message: "Failed to update multiplier.", code: "UNKNOWN" };
+  }
+});
+
+// ── Production Record Handlers ─────────────────────────────────────────────────
+
+/**
+ * production:submit — Saves a full calculation report when a worker pushes to production.
+ * Inserts into production_records + production_chemicals in a transaction.
+ */
+ipcMain.handle("production:submit", async (_event, { record }) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows } = await client.query(
+      `INSERT INTO production_records
+         (user_id, batch_id, schedule_date, stenter, wet_dry, gsm, width, length,
+          cloth_weight, fabric_factor, gsm_range, multiplier, total_bath, t_value, bath_concentration)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING id`,
+      [
+        record.user_id,
+        record.batch_id || null,
+        record.schedule_date || null,
+        record.stenter || null,
+        record.wet_dry,
+        record.gsm,
+        record.width,
+        record.length,
+        record.cloth_weight || null,
+        record.fabric_factor,
+        record.gsm_range || null,
+        record.multiplier,
+        record.total_bath,
+        record.t_value,
+        record.bath_concentration,
+      ]
+    );
+
+    const recordId = rows[0].id;
+
+    for (const chem of (record.chemicals || [])) {
+      await client.query(
+        `INSERT INTO production_chemicals (record_id, chemical_id, chemical_name, density, dosage)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [recordId, chem.chemical_id || '', chem.name, chem.density, chem.dosage]
+      );
+    }
+
+    await client.query("COMMIT");
+    console.log("[DB] Production record saved — id:", recordId, "user:", record.user_id);
+    return { success: true, data: { id: recordId } };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[DB] production:submit error:", err.message);
+    return { success: false, message: "Failed to save production record." };
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * production:list — Returns all production records with chemicals, ordered by submitted_at desc.
+ * Used by admin analytics to show submitted production data.
+ */
+ipcMain.handle("production:list", async () => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT pr.id, pr.user_id, pr.batch_id, pr.schedule_date, pr.stenter,
+             pr.wet_dry, pr.gsm, pr.width, pr.length, pr.cloth_weight,
+             pr.fabric_factor, pr.gsm_range, pr.multiplier, pr.total_bath,
+             pr.t_value, pr.bath_concentration, pr.submitted_at,
+             u.name AS user_name,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'chemical_id', pc.chemical_id,
+                   'chemical_name', pc.chemical_name,
+                   'density', pc.density,
+                   'dosage', pc.dosage
+                 )
+               ) FILTER (WHERE pc.chemical_name IS NOT NULL),
+               '[]'::json
+             ) AS chemicals
+      FROM production_records pr
+      LEFT JOIN users u ON pr.user_id = u.id
+      LEFT JOIN production_chemicals pc ON pr.id = pc.record_id
+      GROUP BY pr.id, pr.user_id, pr.batch_id, pr.schedule_date, pr.stenter,
+               pr.wet_dry, pr.gsm, pr.width, pr.length, pr.cloth_weight,
+               pr.fabric_factor, pr.gsm_range, pr.multiplier, pr.total_bath,
+               pr.t_value, pr.bath_concentration, pr.submitted_at, u.name
+      ORDER BY pr.submitted_at DESC
+    `);
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] production:list error:", err.message);
+    return { success: false, message: "Failed to load production records.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * production:delete — Deletes a single production record by id.
+ */
+ipcMain.handle("production:delete", async (_event, { id }) => {
+  try {
+    await pool.query("DELETE FROM production_records WHERE id = $1", [id]);
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] production:delete error:", err.message);
+    return { success: false, message: "Failed to delete production record." };
   }
 });
 

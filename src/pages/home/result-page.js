@@ -2,13 +2,13 @@
  * src/pages/home/result-page.js — Page 3: Calculation Result
  *
  * Implements the STENTER Recipe Calculation Algorithm:
- *   Step 1 – Inputs: GSM (A), Width (B), Length (C), Chemicals (name, percentage)
+ *   Step 1 – Inputs: GSM (A), Width (B), Length (C), Chemicals (name, density in g/L)
  *   Step 2 – Fabric Factor: D = B × C
  *   Step 3 – GSM Range Multiplier (strict ranges)
  *   Step 4 – Total Bath: total_bath = D × multiplier
- *   Step 5 – T Value: T = round(total_bath / 25) × 25  (nearest 25 multiple)
+ *   Step 5 – T Value: T = ceil(total_bath / 25) × 25  (ceiling 25 multiple)
  *   Step 6 – Bath Concentration: bath_concentration = T × 0.01
- *   Step 7 – Chemical Dosage: dosage = bath_concentration × percentage
+ *   Step 7 – Chemical Dosage: dosage = bath_concentration × density
  *
  * Depends on: HomeApp (constants.js), HomeApp.icons, HomeApp.styles, HomeApp.renderNavbar
  */
@@ -54,7 +54,7 @@
     var C = parseFloat(s.length) || 0;    // Length (m)
     var chemicals = s.chemicals && s.chemicals.length > 0
       ? s.chemicals
-      : [{ name: "Standard Mix", percentage: 10 }];
+      : [{ name: "Standard Mix", density: 10 }];
 
     // ── Step 2: Fabric Factor ─────────────────────────────────────────────────
     var D = B * C;
@@ -67,18 +67,29 @@
     // ── Step 4: Total Bath ────────────────────────────────────────────────────
     var totalBath = D * multiplier;
 
-    // ── Step 5: T Value (normalize to nearest 25 multiple) ────────────────────
-    var T = Math.round(totalBath / 25) * 25;
+    // ── Step 5: T Value (round up to ceiling 25 multiple) ────────────────
+    var T = Math.ceil(totalBath / 25) * 25;
 
     // ── Step 6: Bath Concentration ────────────────────────────────────────────
     var bathConcentration = T * 0.01;
 
     // ── Step 7: Chemical Dosages ──────────────────────────────────────────────
     var chemDosages = chemicals.map(function (c) {
-      var pct = parseFloat(c.percentage) || 0;
-      var dosage = bathConcentration * pct;
-      return { name: c.name, percentage: pct, dosage: dosage };
+      var density = parseFloat(c.density) || 0;
+      var dosage = bathConcentration * density;
+      return { name: c.name, chemical_id: c.chemical_id || "", density: density, dosage: dosage };
     });
+
+    // ── Store computed values in state so the submit handler can access them ──
+    H.getState()._calcResult = {
+      fabricFactor: D,
+      gsmRange: gsmRange,
+      multiplier: multiplier,
+      totalBath: totalBath,
+      tValue: T,
+      bathConcentration: bathConcentration,
+      chemDosages: chemDosages,
+    };
 
     // ── Input Summary rows ────────────────────────────────────────────────────
     var summaryRows = [
@@ -125,7 +136,7 @@
       calcRow("GSM Range", gsmRange) +
       calcRow("Multiplier", "&times; " + multiplier) +
       calcRow("Total Bath (D &times; Multiplier)", totalBath.toLocaleString()) +
-      calcRow("T Value (nearest 25)", T.toLocaleString()) +
+      calcRow("T Value (ceil to 25)", T.toLocaleString()) +
       calcRow("Bath Concentration (T &times; 0.01)", bathConcentration.toFixed(2), true) +
       "</div>";
 
@@ -137,7 +148,7 @@
           '<td style="padding:10px 14px;font-size:14px;color:' + H.TEXT + ';border-bottom:1px solid ' + H.BORDER + '">' + H.escape(c.name) + "</td>" +
           '<td style="padding:10px 14px;font-size:14px;border-bottom:1px solid ' + H.BORDER + '">' +
             '<span style="background:' + H.ACCENT_LIGHT + ';color:' + H.ACCENT + ';font-size:12px;font-weight:600;padding:3px 8px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">' +
-            c.percentage + "%</span>" +
+            c.density + " g/L</span>" +
           "</td>" +
           '<td style="padding:10px 14px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;font-weight:700;color:' + H.TEXT + ';border-bottom:1px solid ' + H.BORDER + '">' + c.dosage.toFixed(2) + "</td>" +
           "</tr>"
@@ -153,7 +164,7 @@
       '<table style="width:100%;border-collapse:collapse">' +
       '<thead><tr style="background:' + H.BG + '">' +
       '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Chemical Name</th>' +
-      '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Percentage (%)</th>' +
+      '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Density (g/L)</th>' +
       '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Dosage</th>' +
       "</tr></thead><tbody>" + rows + "</tbody></table>" +
       "</div>";

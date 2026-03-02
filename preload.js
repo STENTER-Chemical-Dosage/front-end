@@ -104,4 +104,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
    */
   multipliersUpdate: (gsm_range, wet_multiplier, dry_multiplier) =>
     ipcRenderer.invoke("multipliers:update", { gsm_range, wet_multiplier, dry_multiplier }),
+
+  // ── Production Record IPC wrappers ─────────────────────────────────────
+
+  /**
+   * productionSubmit — Saves a calculation report when a worker pushes to production.
+   * @param {object} record — full calculation report payload
+   */
+  productionSubmit: (record) =>
+    ipcRenderer.invoke("production:submit", { record }),
+
+  /**
+   * productionList — Returns all production records with chemicals.
+   */
+  productionList: () =>
+    ipcRenderer.invoke("production:list"),
+
+  /**
+   * productionDelete — Deletes a production record by id.
+   * @param {number} id — the production record id
+   */
+  productionDelete: (id) =>
+    ipcRenderer.invoke("production:delete", { id }),
 });

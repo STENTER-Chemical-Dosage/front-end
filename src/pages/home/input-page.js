@@ -36,7 +36,7 @@
       chemRows +=
         "<tr>" +
         '<td style="padding:8px 12px;font-size:14px;border-bottom:1px solid ' + H.BORDER + '">' + H.escape(c.name) + "</td>" +
-        '<td style="padding:8px 12px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;border-bottom:1px solid ' + H.BORDER + '">' + c.percentage + "%</td>" +
+        '<td style="padding:8px 12px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;border-bottom:1px solid ' + H.BORDER + '">' + c.density + " g/L</td>" +
         '<td style="padding:8px 12px;text-align:center;border-bottom:1px solid ' + H.BORDER + '">' +
         '<button data-remove-chem="' + i + '" style="background:none;border:none;cursor:pointer;color:' + H.DANGER + ';font-size:18px;line-height:1;padding:2px 6px">&times;</button>' +
         "</td></tr>";
@@ -48,7 +48,7 @@
         '<table style="width:100%;border-collapse:collapse;margin-top:12px;border:1px solid ' + H.BORDER + ';border-radius:8px;overflow:hidden">' +
         '<thead><tr style="background:' + H.BG + '">' +
         '<th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Chemical Name</th>' +
-        '<th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Percentage (%)</th>' +
+        '<th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Density (g/L)</th>' +
         '<th style="padding:8px 12px;text-align:center;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '"></th>' +
         "</tr></thead><tbody>" + chemRows + "</tbody></table>";
     }
@@ -101,8 +101,8 @@
       '<select id="inp-chem-select" style="' + H.styles.input(false) + '">' + chemOpts + "</select>" +
       "</div>" +
       '<div style="flex:1">' +
-      '<input id="inp-chem-percentage" type="number" value="' + H.escape(s.chemicalPercentage) +
-      '" placeholder="Percentage (%)" style="' + H.styles.monoInput(errors.chemicalPercentage) + '" />' +
+      '<input id="inp-chem-density" type="number" value="' + H.escape(s.chemicalDensity) +
+      '" placeholder="Density (g/L)" style="' + H.styles.monoInput(errors.chemicalDensity) + '" />' +
       "</div>" +
       '<button id="btn-add-chem" style="height:44px;padding:0 18px;background:' + H.ACCENT +
       ";color:#fff;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:14px;" +
@@ -110,7 +110,7 @@
       H.icons.plus(14, "#fff") + " Add</button>" +
       "</div>" +
       (errors.chemicals ? '<div style="' + H.styles.err() + '">' + errors.chemicals + "</div>" : "") +
-      (errors.chemicalPercentage ? '<div style="' + H.styles.err() + '">' + errors.chemicalPercentage + "</div>" : "") +
+      (errors.chemicalDensity ? '<div style="' + H.styles.err() + '">' + errors.chemicalDensity + "</div>" : "") +
       chemTable +
       "</div>"
     );

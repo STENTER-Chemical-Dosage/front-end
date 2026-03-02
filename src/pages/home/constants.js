@@ -87,6 +87,7 @@ window.HomeApp = (() => {
       activeTab: "simple",
       dropdownOpen: false,
       batchNumber: "",
+      scheduleDate: "",
       wetDry: "Wet",
       stenter: "Stenter 1",
       gsm: "",
@@ -95,7 +96,7 @@ window.HomeApp = (() => {
       clothWeight: "",
       chemicals: [],
       selectedChemical: "",
-      chemicalPercentage: "",
+      chemicalDensity: "",
       fetchingBatch: false,
       errors: {},
       adminDateMode: "single",
@@ -132,6 +133,15 @@ window.HomeApp = (() => {
       multiplierRegistry: [],       // loaded from DB on app start + admin tab open
       multiplierRegistryLoading: false,
       multiplierFetchAttempted: false,
+      // ── Admin – Production Records tab ──────────────────────────────────
+      prodRegistry: [],
+      prodRegistryLoading: false,
+      prodFetchAttempted: false,
+      prodSearch: "",
+      prodSortCol: "submitted_at",
+      prodSortDir: "desc",
+      expandedProdId: null,
+      prodSelectedIds: [],           // array of selected record IDs for XLSX export
     };
   }
 
@@ -170,7 +180,9 @@ window.HomeApp = (() => {
       chemRegistry: _state.chemRegistry || [],
       chemFetchAttempted: _state.chemFetchAttempted || false,
       batchRegistry: _state.batchRegistry || [],
-      batchFetchAttempted: _state.batchFetchAttempted || false
+      batchFetchAttempted: _state.batchFetchAttempted || false,
+      prodRegistry: _state.prodRegistry || [],
+      prodFetchAttempted: _state.prodFetchAttempted || false,
     };
     _state = defaultState();
     Object.assign(_state, preserved);

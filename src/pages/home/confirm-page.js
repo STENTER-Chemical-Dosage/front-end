@@ -37,7 +37,7 @@
     if (s.chemicals.length > 0) {
       chemDisplay = s.chemicals
         .map(function (c) {
-          return H.escape(c.name) + " (" + c.percentage + "%)";
+          return H.escape(c.name) + " (" + c.density + " g/L)";
         })
         .join(", ");
     }
