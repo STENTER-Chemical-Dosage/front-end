@@ -30,11 +30,39 @@
   }
 
   // â”€â”€ Date Controls Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  function _renderDateControls(allActiveDates) {
+  // ── Build aggregated data from real batchRegistry ────────────────────────
+  // Returns { dates: { "YYYY-MM-DD": { chemName: totalDensity } }, chemNames: [...] }
+  function _buildBatchData() {
     var s = H.getState();
-    var allDates = Object.keys(H.MOCK_DATA).sort();
-    var minDate = allDates[0];
-    var maxDate = allDates[allDates.length - 1];
+    var batches = s.batchRegistry || [];
+    var chemReg = s.chemRegistry || [];
+    var dates = {};
+    var chemSet = {};
+
+    batches.forEach(function (b) {
+      var d = b.schedule_date || "";
+      if (!d) return;
+      if (!dates[d]) dates[d] = {};
+      (b.chemicals || []).forEach(function (c) {
+        var name = c.chemical_name || c.chemical_id || "Unknown";
+        chemSet[name] = true;
+        dates[d][name] = (dates[d][name] || 0) + (parseFloat(c.density) || 0);
+      });
+    });
+
+    // If no batch data yet, derive chemical names from chemRegistry
+    var chemNames = Object.keys(chemSet);
+    if (chemNames.length === 0) {
+      chemNames = chemReg.map(function (c) { return c.chemical_name; });
+    }
+
+    return { dates: dates, chemNames: chemNames };
+  }
+
+  function _renderDateControls(allActiveDates, allDates) {
+    var s = H.getState();
+    var minDate = allDates.length > 0 ? allDates[0] : H.todayISO();
+    var maxDate = allDates.length > 0 ? allDates[allDates.length - 1] : H.todayISO();
     var isSingle = s.adminDateMode === "single";
 
     var inputStyle =
@@ -89,12 +117,17 @@
   }
 
   // â”€â”€ SVG Bar Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  function _renderBarChart(aggregated, subtitle) {
-    var vals = H.CHEMICAL_LIST.map(function (c) { return aggregated[c] || 0; });
+  function _renderBarChart(aggregated, subtitle, chemNames) {
+    if (!chemNames || chemNames.length === 0) {
+      return '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
+        ';border-radius:12px;padding:24px;margin-bottom:20px;text-align:center;color:' + H.MUTED +
+        ';font-size:14px">No chemical data available. Import batches to see analytics.</div>';
+    }
+    var vals = chemNames.map(function (c) { return aggregated[c] || 0; });
     var maxVal = Math.max.apply(null, vals.concat([1]));
 
     var barW = 56, gap = 18, chartH = 180;
-    var total = H.CHEMICAL_LIST.length;
+    var total = chemNames.length;
     var svgW = total * (barW + gap) + gap;
 
     // Grid lines at 0%, 25%, 50%, 75%, 100%
@@ -117,8 +150,10 @@
     // Bars + labels
     var barsSvg = "";
     var legendHtml = "";
-    H.CHEMICAL_LIST.forEach(function (chem, i) {
+    chemNames.forEach(function (chem, i) {
+      var color = H.CHEM_COLORS[i % H.CHEM_COLORS.length];
       var val = aggregated[chem] || 0;
+      var roundVal = Math.round(val * 100) / 100;
       var barH = Math.max((val / maxVal) * chartH, 2);
       var x = gap + i * (barW + gap);
       var y = chartH - barH;
@@ -128,7 +163,7 @@
 
       barsSvg +=
         '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + barH +
-        '" rx="6" fill="' + H.CHEM_COLORS[i] + '"/>';
+        '" rx="6" fill="' + color + '"/>';
       barsSvg +=
         '<text x="' + (x + barW / 2) + '" y="' + (chartH + 16) +
         '" text-anchor="middle" font-size="11" fill="#374151" font-weight="600"' +
@@ -141,15 +176,15 @@
       }
       barsSvg +=
         '<text x="' + (x + barW / 2) + '" y="' + (y - 7) +
-        '" text-anchor="middle" font-size="11" fill="' + H.CHEM_COLORS[i] +
-        '" font-weight="700" font-family="IBM Plex Mono, monospace">' + val + "g</text>";
+        '" text-anchor="middle" font-size="11" fill="' + color +
+        '" font-weight="700" font-family="IBM Plex Mono, monospace">' + roundVal + "</text>";
 
       legendHtml +=
         '<div style="display:flex;align-items:center;gap:6px;font-size:12px">' +
-        '<div style="width:10px;height:10px;border-radius:3px;background:' + H.CHEM_COLORS[i] + '"></div>' +
+        '<div style="width:10px;height:10px;border-radius:3px;background:' + color + '"></div>' +
         '<span style="color:' + H.TEXT + ';font-weight:500">' + chem + "</span>" +
-        '<span style="color:' + H.CHEM_COLORS[i] + ";font-family:'IBM Plex Mono',monospace;font-weight:700\">" +
-        val + "g</span>" +
+        '<span style="color:' + color + ";font-family:'IBM Plex Mono',monospace;font-weight:700\">" +
+        roundVal + "</span>" +
         "</div>";
     });
 
@@ -172,32 +207,33 @@
   }
 
   // â”€â”€ SVG Line Charts (2-column grid) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  function _renderLineCharts(allDates) {
+  function _renderLineCharts(allDates, chemNames, batchDates) {
+    if (!chemNames || chemNames.length === 0) return "";
     var todayStr = allDates[allDates.length - 1];
     var charts = "";
-    H.CHEMICAL_LIST.forEach(function (chem, idx) {
-      charts += _renderSingleLineChart(chem, idx, allDates, todayStr);
+    chemNames.forEach(function (chem, idx) {
+      charts += _renderSingleLineChart(chem, idx, allDates, todayStr, batchDates);
     });
     return (
       '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + ';margin-bottom:14px">' +
       "Daily Usage per Chemical" +
-      '<span style="font-size:12px;font-weight:400;color:' + H.MUTED + ';margin-left:10px">Last 30 days</span>' +
+      '<span style="font-size:12px;font-weight:400;color:' + H.MUTED + ';margin-left:10px">' + allDates.length + ' days</span>' +
       "</div>" +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' + charts + "</div>"
     );
   }
 
-  function _renderSingleLineChart(chem, idx, allDates, todayStr) {
-    var color = H.CHEM_COLORS[idx];
+  function _renderSingleLineChart(chem, idx, allDates, todayStr, batchDates) {
+    var color = H.CHEM_COLORS[idx % H.CHEM_COLORS.length];
     var values = allDates.map(function (d) {
-      return H.MOCK_DATA[d] ? (H.MOCK_DATA[d][chem] || 0) : 0;
+      return batchDates[d] ? (batchDates[d][chem] || 0) : 0;
     });
 
     // Stats
     var sum = 0;
     values.forEach(function (v) { sum += v; });
     var avg = Math.round(sum / values.length);
-    var latest = H.MOCK_DATA[todayStr] ? (H.MOCK_DATA[todayStr][chem] || 0) : 0;
+    var latest = batchDates[todayStr] ? (batchDates[todayStr][chem] || 0) : 0;
 
     // Chart dimensions
     var chartH = 110;
@@ -745,17 +781,20 @@
   // ── Main Admin Renderer ────────────────────────────────────────────────────
   function renderAdmin() {
     var s = H.getState();
-    var allDates = Object.keys(H.MOCK_DATA).sort();
+    var batchData = _buildBatchData();
+    var batchDates = batchData.dates;
+    var chemNames = batchData.chemNames;
+    var allDates = Object.keys(batchDates).sort();
 
     // Determine active dates for bar chart aggregation
     var activeDates = [];
     if (s.adminDateMode === "single") {
-      if (H.MOCK_DATA[s.adminSingleDate]) {
+      if (batchDates[s.adminSingleDate]) {
         activeDates = [s.adminSingleDate];
       }
     } else {
       activeDates = _getDatesInRange(s.adminDateFrom, s.adminDateTo).filter(function (d) {
-        return !!H.MOCK_DATA[d];
+        return !!batchDates[d];
       });
     }
 
@@ -767,11 +806,11 @@
       subtitle = "Aggregated: " + _fmtDate(s.adminDateFrom) + " \u2013 " + _fmtDate(s.adminDateTo);
     }
 
-    // Aggregate
+    // Aggregate from real batch data
     var aggregated = {};
-    H.CHEMICAL_LIST.forEach(function (c) { aggregated[c] = 0; });
+    chemNames.forEach(function (c) { aggregated[c] = 0; });
     activeDates.forEach(function (d) {
-      H.CHEMICAL_LIST.forEach(function (c) { aggregated[c] += H.MOCK_DATA[d][c] || 0; });
+      chemNames.forEach(function (c) { aggregated[c] += (batchDates[d] && batchDates[d][c]) || 0; });
     });
 
     // All calendar days in range (for badge count)
@@ -807,9 +846,9 @@
         ? _renderBatchesTab(s)
         : s.adminTab === "chemicals"
           ? _renderChemicalsTab(s)
-          : _renderDateControls(allActiveDates) +
-            _renderBarChart(aggregated, subtitle) +
-            _renderLineCharts(allDates)
+          : _renderDateControls(allActiveDates, allDates) +
+            _renderBarChart(aggregated, subtitle, chemNames) +
+            _renderLineCharts(allDates, chemNames, batchDates)
       ) +
       "</div></div>" +
 

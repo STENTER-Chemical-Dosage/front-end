@@ -37,7 +37,7 @@
     if (s.chemicals.length > 0) {
       chemDisplay = s.chemicals
         .map(function (c) {
-          return H.escape(c.name) + " (" + c.density + " g/L)";
+          return H.escape(c.name) + " (" + c.percentage + "%)";
         })
         .join(", ");
     }
@@ -48,14 +48,15 @@
       '<main style="max-width:720px;margin:0 auto;padding:32px 24px">' +
       '<div style="background:' + H.CARD + ";border:1px solid " + H.BORDER + ';border-radius:12px;padding:28px 32px">' +
       '<h2 style="margin:0 0 20px;font-size:20px;font-weight:700;color:' + H.TEXT + '">Confirm Details</h2>' +
+      (isSimple ? '<div style="margin-bottom:14px;padding:10px 14px;background:' + H.ACCENT_LIGHT + ';border-radius:8px;font-size:13px;color:' + H.ACCENT + ';font-weight:600">Data fetched from database for batch ' + H.escape(s.batchNumber) + '</div>' : '') +
       row("Batch Number", H.escape(s.batchNumber)) +
       row("Type", badge(s.wetDry)) +
-      row("Stenter", isSimple ? "" : H.escape(s.stenter)) +
-      row("GSM", isSimple ? "" : s.gsm + " g/m&sup2;") +
-      row("Width", isSimple ? "" : s.width + " cm") +
-      row("Length", isSimple ? "" : s.length + " m") +
-      row("Cloth Weight", isSimple ? "" : s.clothWeight + " kg") +
-      row("Chemicals", isSimple ? "" : chemDisplay) +
+      row("Stenter", s.stenter ? H.escape(s.stenter) : "") +
+      row("GSM", s.gsm ? s.gsm + " g/m&sup2;" : "") +
+      row("Width", s.width ? s.width + " cm" : "") +
+      row("Length", s.length ? s.length + " m" : "") +
+      row("Cloth Weight", s.clothWeight ? s.clothWeight + " kg" : "") +
+      row("Chemicals", chemDisplay) +
 
       // Buttons
       '<div style="display:flex;gap:12px;margin-top:24px">' +

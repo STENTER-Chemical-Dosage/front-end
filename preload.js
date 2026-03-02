@@ -82,6 +82,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   batchesDelete: (batch_id) =>
     ipcRenderer.invoke("batches:delete", { batch_id }),
 
+  batchesGet: (batch_id) =>
+    ipcRenderer.invoke("batches:get", { batch_id }),
+
   batchesUpdateFull: (old_id, batch) =>
     ipcRenderer.invoke("batches:update-full", { old_id, batch }),
 });

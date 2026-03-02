@@ -186,10 +186,10 @@ window.HomePage = (() => {
     });
 
     var _s = H.getState();
-    if (_s.showAdmin && (_s.adminTab === "chemicals" || _s.adminTab === "batches") && !_s.chemFetchAttempted && !_s.chemRegistryLoading) {
+    if (_s.showAdmin && !_s.chemFetchAttempted && !_s.chemRegistryLoading) {
       _fetchChemicals();
     }
-    if (_s.showAdmin && _s.adminTab === "batches" && !_s.batchFetchAttempted && !_s.batchRegistryLoading) {
+    if (_s.showAdmin && (_s.adminTab === "batches" || _s.adminTab === "analytics") && !_s.batchFetchAttempted && !_s.batchRegistryLoading) {
       _fetchBatches();
     }
 
@@ -578,8 +578,8 @@ window.HomePage = (() => {
       { id: "inp-width",        key: "width" },
       { id: "inp-length",       key: "length" },
       { id: "inp-weight",       key: "clothWeight" },
-      { id: "inp-chem-select",  key: "selectedChemical", event: "change" },
-      { id: "inp-chem-density", key: "chemicalDensity" },
+      { id: "inp-chem-select",     key: "selectedChemical", event: "change" },
+      { id: "inp-chem-percentage",  key: "chemicalPercentage" },
     ];
 
     bindings.forEach(function (b) {
@@ -647,8 +647,8 @@ window.HomePage = (() => {
       { id: "inp-width",        key: "width" },
       { id: "inp-length",       key: "length" },
       { id: "inp-weight",       key: "clothWeight" },
-      { id: "inp-chem-select",  key: "selectedChemical" },
-      { id: "inp-chem-density", key: "chemicalDensity" },
+      { id: "inp-chem-select",     key: "selectedChemical" },
+      { id: "inp-chem-percentage",  key: "chemicalPercentage" },
     ];
     fields.forEach(function (f) {
       var el = document.getElementById(f.id);
@@ -668,7 +668,12 @@ window.HomePage = (() => {
     }
 
     if (s.activeTab === "complex") {
-      if (!s.gsm || parseFloat(s.gsm) <= 0) errors.gsm = "Must be a positive number";
+      var gsmVal = parseFloat(s.gsm);
+      if (!s.gsm || gsmVal <= 0) {
+        errors.gsm = "Must be a positive number";
+      } else if (!(gsmVal > 100 && gsmVal <= 120) && !(gsmVal > 120 && gsmVal <= 140) && !(gsmVal > 140 && gsmVal <= 160) && !(gsmVal > 160 && gsmVal <= 180) && !(gsmVal > 180 && gsmVal <= 200)) {
+        errors.gsm = "GSM must be in range: 100-120, 120-140, 140-160, 160-180, or 180-200";
+      }
       if (!s.width || parseFloat(s.width) <= 0) errors.width = "Must be a positive number";
       if (!s.length || parseFloat(s.length) <= 0) errors.length = "Must be a positive number";
       if (!s.clothWeight || parseFloat(s.clothWeight) <= 0) errors.clothWeight = "Must be a positive number";
@@ -680,6 +685,54 @@ window.HomePage = (() => {
       return;
     }
 
+    // ── Simple mode: fetch batch data from database ──────────────────────────
+    if (s.activeTab === "simple") {
+      H.setState({ errors: {}, fetchingBatch: true });
+      window.electronAPI.batchesGet(s.batchNumber.trim())
+        .then(function (result) {
+          if (!result.success) {
+            H.setState({
+              fetchingBatch: false,
+              errors: { batchNumber: result.message || "Batch not found in database" }
+            });
+            return;
+          }
+          var b = result.data;
+          // Validate GSM from DB
+          var dbGsm = parseFloat(b.gsm) || 0;
+          if (!(dbGsm > 100 && dbGsm <= 120) && !(dbGsm > 120 && dbGsm <= 140) && !(dbGsm > 140 && dbGsm <= 160) && !(dbGsm > 160 && dbGsm <= 180) && !(dbGsm > 180 && dbGsm <= 200)) {
+            H.setState({
+              fetchingBatch: false,
+              errors: { batchNumber: "Batch GSM (" + b.gsm + ") is outside valid ranges (100-200)" }
+            });
+            return;
+          }
+          // Map batch chemicals to the format used by the calculation
+          var chems = (b.chemicals || []).map(function (c) {
+            return { name: c.chemical_name || c.chemical_id, percentage: parseFloat(c.density) || 0 };
+          });
+          // Populate state with DB data and advance to confirm page
+          H.setState({
+            fetchingBatch: false,
+            stenter: b.stenter || "",
+            gsm: b.gsm || "",
+            width: b.width || "",
+            length: b.length || "",
+            clothWeight: b.weight || "",
+            chemicals: chems,
+            errors: {},
+            page: 2,
+          });
+        })
+        .catch(function (err) {
+          H.setState({
+            fetchingBatch: false,
+            errors: { batchNumber: "Failed to fetch batch: " + err.message }
+          });
+        });
+      return;
+    }
+
     H.setState({ errors: {}, page: 2 });
   }
 
@@ -688,17 +741,17 @@ window.HomePage = (() => {
     _syncInputState();
 
     var s = H.getState();
-    var density = parseFloat(s.chemicalDensity);
-    if (!density || density <= 0) {
+    var percentage = parseFloat(s.chemicalPercentage);
+    if (!percentage || percentage <= 0) {
       var newErrors = Object.assign({}, s.errors || {});
-      newErrors.chemicalDensity = "Enter a valid positive density";
+      newErrors.chemicalPercentage = "Enter a valid positive percentage";
       H.setState({ errors: newErrors });
       return;
     }
 
     var chemicals = s.chemicals.slice();
-    chemicals.push({ name: s.selectedChemical, density: density });
-    H.setState({ chemicals: chemicals, chemicalDensity: "", errors: {} });
+    chemicals.push({ name: s.selectedChemical, percentage: percentage });
+    H.setState({ chemicals: chemicals, chemicalPercentage: "", errors: {} });
   }
 
   // ── Reset everything and go back to Page 1 ────────────────────────────────
@@ -986,6 +1039,10 @@ window.HomePage = (() => {
     H.setContainer(container);
     H.resetState();
     _render();
+
+    // Fetch chemicals from DB so the input dropdown uses real data
+    _fetchChemicals();
+
     Logger.info("HomePage", "LiqCalc loaded", { user: user.email });
   }
 

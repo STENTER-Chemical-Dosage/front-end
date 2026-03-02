@@ -23,9 +23,11 @@
       })
       .join("");
 
-    // Chemical dropdown options
-    var chemOpts = H.CHEMICAL_LIST.map(function (c) {
-      return '<option value="' + c + '"' + (s.selectedChemical === c ? " selected" : "") + ">" + c + "</option>";
+    // Chemical dropdown options — use real DB chemicals from chemRegistry
+    var chemList = (s.chemRegistry || []).map(function (c) { return c.chemical_name; });
+    if (chemList.length === 0) chemList = ["(loading chemicals…)"];
+    var chemOpts = chemList.map(function (c) {
+      return '<option value="' + H.escape(c) + '"' + (s.selectedChemical === c ? " selected" : "") + ">" + H.escape(c) + "</option>";
     }).join("");
 
     // Chemical table rows
@@ -34,7 +36,7 @@
       chemRows +=
         "<tr>" +
         '<td style="padding:8px 12px;font-size:14px;border-bottom:1px solid ' + H.BORDER + '">' + H.escape(c.name) + "</td>" +
-        '<td style="padding:8px 12px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;border-bottom:1px solid ' + H.BORDER + '">' + c.density + "</td>" +
+        '<td style="padding:8px 12px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;border-bottom:1px solid ' + H.BORDER + '">' + c.percentage + "%</td>" +
         '<td style="padding:8px 12px;text-align:center;border-bottom:1px solid ' + H.BORDER + '">' +
         '<button data-remove-chem="' + i + '" style="background:none;border:none;cursor:pointer;color:' + H.DANGER + ';font-size:18px;line-height:1;padding:2px 6px">&times;</button>' +
         "</td></tr>";
@@ -46,7 +48,7 @@
         '<table style="width:100%;border-collapse:collapse;margin-top:12px;border:1px solid ' + H.BORDER + ';border-radius:8px;overflow:hidden">' +
         '<thead><tr style="background:' + H.BG + '">' +
         '<th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Chemical Name</th>' +
-        '<th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Density (g/L)</th>' +
+        '<th style="padding:8px 12px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Percentage (%)</th>' +
         '<th style="padding:8px 12px;text-align:center;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '"></th>' +
         "</tr></thead><tbody>" + chemRows + "</tbody></table>";
     }
@@ -99,8 +101,8 @@
       '<select id="inp-chem-select" style="' + H.styles.input(false) + '">' + chemOpts + "</select>" +
       "</div>" +
       '<div style="flex:1">' +
-      '<input id="inp-chem-density" type="number" value="' + H.escape(s.chemicalDensity) +
-      '" placeholder="Density (g/L)" style="' + H.styles.monoInput(errors.chemicalDensity) + '" />' +
+      '<input id="inp-chem-percentage" type="number" value="' + H.escape(s.chemicalPercentage) +
+      '" placeholder="Percentage (%)" style="' + H.styles.monoInput(errors.chemicalPercentage) + '" />' +
       "</div>" +
       '<button id="btn-add-chem" style="height:44px;padding:0 18px;background:' + H.ACCENT +
       ";color:#fff;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:14px;" +
@@ -108,7 +110,7 @@
       H.icons.plus(14, "#fff") + " Add</button>" +
       "</div>" +
       (errors.chemicals ? '<div style="' + H.styles.err() + '">' + errors.chemicals + "</div>" : "") +
-      (errors.chemicalDensity ? '<div style="' + H.styles.err() + '">' + errors.chemicalDensity + "</div>" : "") +
+      (errors.chemicalPercentage ? '<div style="' + H.styles.err() + '">' + errors.chemicalPercentage + "</div>" : "") +
       chemTable +
       "</div>"
     );
@@ -170,13 +172,17 @@
       html += _renderComplexFields();
     }
 
-    // Process button
+    // Process button (shows loading state when fetching batch from DB)
+    var isFetching = s.fetchingBatch;
     html +=
-      '<button id="btn-process" style="display:flex;align-items:center;gap:8px;justify-content:center;' +
-      "margin-top:24px;width:100%;height:46px;background:" + H.ACCENT +
+      '<button id="btn-process"' + (isFetching ? ' disabled' : '') +
+      ' style="display:flex;align-items:center;gap:8px;justify-content:center;' +
+      "margin-top:24px;width:100%;height:46px;background:" + (isFetching ? H.MUTED : H.ACCENT) +
       ";color:#fff;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:15px;" +
-      'font-weight:600;cursor:pointer">' +
-      "Process " + H.icons.arrowRight(14, "#fff") +
+      'font-weight:600;cursor:' + (isFetching ? 'not-allowed' : 'pointer') + '">' +
+      (isFetching
+        ? "Fetching batch data\u2026"
+        : "Process " + H.icons.arrowRight(14, "#fff")) +
       "</button>" +
       "</div></main></div>";
 

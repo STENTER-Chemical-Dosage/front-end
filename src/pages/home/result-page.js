@@ -1,8 +1,14 @@
 /**
  * src/pages/home/result-page.js — Page 3: Calculation Result
  *
- * Displays the total bath calculation and chemical breakdown table
- * after the user confirms their input.
+ * Implements the STENTER Recipe Calculation Algorithm:
+ *   Step 1 – Inputs: GSM (A), Width (B), Length (C), Chemicals (name, percentage)
+ *   Step 2 – Fabric Factor: D = B × C
+ *   Step 3 – GSM Range Multiplier (strict ranges)
+ *   Step 4 – Total Bath: total_bath = D × multiplier
+ *   Step 5 – T Value: T = round(total_bath / 25) × 25  (nearest 25 multiple)
+ *   Step 6 – Bath Concentration: bath_concentration = T × 0.01
+ *   Step 7 – Chemical Dosage: dosage = bath_concentration × percentage
  *
  * Depends on: HomeApp (constants.js), HomeApp.icons, HomeApp.styles, HomeApp.renderNavbar
  */
@@ -10,24 +16,61 @@
 (function () {
   var H = window.HomeApp;
 
+  // ── GSM Range Multiplier lookup ─────────────────────────────────────────────
+  function _getGsmMultiplier(gsm) {
+    if (gsm > 100 && gsm <= 120) return { multiplier: 1.2, range: "100 < gsm <= 120" };
+    if (gsm > 120 && gsm <= 140) return { multiplier: 1.4, range: "120 < gsm <= 140" };
+    if (gsm > 140 && gsm <= 160) return { multiplier: 1.6, range: "140 < gsm <= 160" };
+    if (gsm > 160 && gsm <= 180) return { multiplier: 1.8, range: "160 < gsm <= 180" };
+    if (gsm > 180 && gsm <= 200) return { multiplier: 2.0, range: "180 < gsm <= 200" };
+    return null; // outside all ranges
+  }
+
   function renderResultPage() {
     var s = H.getState();
     var isComplex = s.activeTab !== "simple";
-    var liquorRatio = 10;
-    var weight = isComplex ? (parseFloat(s.clothWeight) || 0) : 100;
-    var bathLiters = isComplex ? Math.round(weight * liquorRatio) : 1000;
 
-    var auto = '<span style="font-style:italic;color:' + H.MUTED + '">Auto</span>';
+    // ── Step 1: Inputs (populated from DB for simple mode, manual for complex)
+    var A = parseFloat(s.gsm) || 0;       // GSM
+    var B = parseFloat(s.width) || 0;     // Width (cm)
+    var C = parseFloat(s.length) || 0;    // Length (m)
+    var chemicals = s.chemicals && s.chemicals.length > 0
+      ? s.chemicals
+      : [{ name: "Standard Mix", percentage: 10 }];
+
+    // ── Step 2: Fabric Factor ─────────────────────────────────────────────────
+    var D = B * C;
+
+    // ── Step 3: GSM Range Multiplier ──────────────────────────────────────────
+    var gsmResult = _getGsmMultiplier(A);
+    var multiplier = gsmResult ? gsmResult.multiplier : 0;
+    var gsmRange = gsmResult ? gsmResult.range : "Out of range";
+
+    // ── Step 4: Total Bath ────────────────────────────────────────────────────
+    var totalBath = D * multiplier;
+
+    // ── Step 5: T Value (normalize to nearest 25 multiple) ────────────────────
+    var T = Math.round(totalBath / 25) * 25;
+
+    // ── Step 6: Bath Concentration ────────────────────────────────────────────
+    var bathConcentration = T * 0.01;
+
+    // ── Step 7: Chemical Dosages ──────────────────────────────────────────────
+    var chemDosages = chemicals.map(function (c) {
+      var pct = parseFloat(c.percentage) || 0;
+      var dosage = bathConcentration * pct;
+      return { name: c.name, percentage: pct, dosage: dosage };
+    });
 
     // ── Input Summary rows ────────────────────────────────────────────────────
     var summaryRows = [
       ["Batch Number",  H.escape(s.batchNumber)],
       ["Cloth Type",    H.escape(s.wetDry)],
-      ["Stenter",       isComplex ? H.escape(s.stenter)          : auto],
-      ["GSM",           isComplex ? H.escape(s.gsm) + " g/m&sup2;" : auto],
-      ["Width",         isComplex ? H.escape(s.width) + " cm"    : auto],
-      ["Length",        isComplex ? H.escape(s.length) + " m"    : auto],
-      ["Cloth Weight",  isComplex ? H.escape(s.clothWeight) + " kg" : auto],
+      ["Stenter",       s.stenter ? H.escape(s.stenter) : "N/A"],
+      ["GSM",           s.gsm ? H.escape(s.gsm) + " g/m&sup2;" : "N/A"],
+      ["Width",         s.width ? H.escape(s.width) + " cm" : "N/A"],
+      ["Length",        s.length ? H.escape(s.length) + " m" : "N/A"],
+      ["Cloth Weight",  s.clothWeight ? H.escape(s.clothWeight) + " kg" : "N/A"],
     ]
       .map(function (pair) {
         return (
@@ -45,22 +88,40 @@
       summaryRows +
       "</div>";
 
-    // ── Chemical breakdown ────────────────────────────────────────────────────
-    var chemicals = s.chemicals && s.chemicals.length > 0
-      ? s.chemicals
-      : [{ name: "Standard Mix", density: "20" }];
+    // ── Calculation Breakdown Card ────────────────────────────────────────────
+    function calcRow(label, value, highlight) {
+      var valStyle = "font-size:14px;font-family:'IBM Plex Mono',monospace;font-weight:" + (highlight ? "700" : "600") +
+        ";color:" + (highlight ? H.ACCENT : H.TEXT);
+      return (
+        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid ' + H.BORDER + '">' +
+        '<span style="font-size:13px;color:' + H.MUTED + '">' + label + "</span>" +
+        '<span style="' + valStyle + '">' + value + "</span>" +
+        "</div>"
+      );
+    }
 
-    var rows = chemicals
+    var calcSection =
+      '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:10px;padding:16px 20px;margin-bottom:20px">' +
+      '<div style="font-size:11px;font-weight:700;color:#A0ACAB;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px">Calculation Breakdown</div>' +
+      calcRow("Fabric Factor (Width &times; Length)", D.toLocaleString() + " cm&middot;m") +
+      calcRow("GSM Range", gsmRange) +
+      calcRow("Multiplier", "&times; " + multiplier) +
+      calcRow("Total Bath (D &times; Multiplier)", totalBath.toLocaleString()) +
+      calcRow("T Value (nearest 25)", T.toLocaleString()) +
+      calcRow("Bath Concentration (T &times; 0.01)", bathConcentration.toFixed(2), true) +
+      "</div>";
+
+    // ── Chemical Dosage Table ─────────────────────────────────────────────────
+    var rows = chemDosages
       .map(function (c) {
-        var amount = Math.round(parseFloat(c.density) * bathLiters).toLocaleString();
         return (
           "<tr>" +
           '<td style="padding:10px 14px;font-size:14px;color:' + H.TEXT + ';border-bottom:1px solid ' + H.BORDER + '">' + H.escape(c.name) + "</td>" +
           '<td style="padding:10px 14px;font-size:14px;border-bottom:1px solid ' + H.BORDER + '">' +
             '<span style="background:' + H.ACCENT_LIGHT + ';color:' + H.ACCENT + ';font-size:12px;font-weight:600;padding:3px 8px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">' +
-            H.escape(String(c.density)) + " g/L</span>" +
+            c.percentage + "%</span>" +
           "</td>" +
-          '<td style="padding:10px 14px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;font-weight:700;color:' + H.TEXT + ';border-bottom:1px solid ' + H.BORDER + '">' + amount + " g</td>" +
+          '<td style="padding:10px 14px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;font-weight:700;color:' + H.TEXT + ';border-bottom:1px solid ' + H.BORDER + '">' + c.dosage.toFixed(2) + "</td>" +
           "</tr>"
         );
       })
@@ -69,13 +130,13 @@
     var chemTable =
       '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:10px;overflow:hidden;margin-top:20px">' +
       '<div style="padding:14px 20px;border-bottom:1px solid ' + H.BORDER + '">' +
-        '<div style="font-size:11px;font-weight:700;color:#A0ACAB;text-transform:uppercase;letter-spacing:0.07em">Chemical Breakdown</div>' +
+        '<div style="font-size:11px;font-weight:700;color:#A0ACAB;text-transform:uppercase;letter-spacing:0.07em">Chemical Dosage</div>' +
       "</div>" +
       '<table style="width:100%;border-collapse:collapse">' +
       '<thead><tr style="background:' + H.BG + '">' +
       '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Chemical Name</th>' +
-      '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Density (g/L)</th>' +
-      '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Required Amount (g)</th>' +
+      '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Percentage (%)</th>' +
+      '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Dosage</th>' +
       "</tr></thead><tbody>" + rows + "</tbody></table>" +
       "</div>";
 
@@ -114,18 +175,19 @@
       "</div>" +
 
       summarySection +
+      calcSection +
 
       // Result highlight card
       '<div style="background:' + H.ACCENT_LIGHT + ";border:2px solid " + H.ACCENT +
         ';border-radius:12px;padding:28px 32px;text-align:center;margin-bottom:4px">' +
-        '<div style="font-size:12px;font-weight:700;color:' + H.ACCENT + ';text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Total Bath Required</div>' +
+        '<div style="font-size:12px;font-weight:700;color:' + H.ACCENT + ';text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Total Bath (T Value)</div>' +
         '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:42px;font-weight:700;color:' + H.ACCENT + '">' +
-          bathLiters.toLocaleString() +
-          ' <span style="font-size:22px;font-weight:600">Liters</span>' +
+          T.toLocaleString() +
         "</div>" +
-        '<div style="font-size:13px;color:' + H.ACCENT + ';margin-top:4px;opacity:0.75">' +
-          "Calculated at " + liquorRatio + ":1 liquor ratio &middot; " +
-          (isComplex ? H.escape(s.clothWeight) + " kg cloth weight" : "standard estimate") +
+        '<div style="font-size:13px;color:' + H.ACCENT + ';margin-top:6px;opacity:0.75">' +
+          "Bath Concentration: " + bathConcentration.toFixed(2) +
+          " &middot; GSM " + gsmRange +
+          " &middot; Multiplier &times;" + multiplier +
         "</div>" +
       "</div>" +
 

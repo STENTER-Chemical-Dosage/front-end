@@ -94,8 +94,9 @@ window.HomeApp = (() => {
       length: "",
       clothWeight: "",
       chemicals: [],
-      selectedChemical: "Softener A",
-      chemicalDensity: "",
+      selectedChemical: "",
+      chemicalPercentage: "",
+      fetchingBatch: false,
       errors: {},
       adminDateMode: "single",
       adminSingleDate: todayISO(),
@@ -160,7 +161,15 @@ window.HomeApp = (() => {
   }
 
   function resetState() {
+    // Preserve fetched registries (app-level data that shouldn't be cleared)
+    const preserved = {
+      chemRegistry: _state.chemRegistry || [],
+      chemFetchAttempted: _state.chemFetchAttempted || false,
+      batchRegistry: _state.batchRegistry || [],
+      batchFetchAttempted: _state.batchFetchAttempted || false
+    };
     _state = defaultState();
+    Object.assign(_state, preserved);
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────

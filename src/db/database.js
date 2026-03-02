@@ -398,6 +398,42 @@ ipcMain.handle("batches:delete", async (_event, { batch_id }) => {
   }
 });
 
+/**
+ * batches:get — Fetches a single batch by batch_id, including its chemicals.
+ */
+ipcMain.handle("batches:get", async (_event, { batch_id }) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT b.batch_id, b.schedule_date, b.stenter, b.weight, b.width,
+             b.length, b.gsm, b.temperature,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'chemical_id', bc.chemical_id,
+                   'density', bc.density,
+                   'chemical_name', c.chemical_name
+                 )
+               ) FILTER (WHERE bc.chemical_id IS NOT NULL),
+               '[]'::json
+             ) AS chemicals
+      FROM batches b
+      LEFT JOIN batch_chemicals bc ON b.batch_id = bc.batch_id
+      LEFT JOIN chemicals c ON bc.chemical_id = c.chemical_id
+      WHERE b.batch_id = $1
+      GROUP BY b.batch_id, b.schedule_date, b.stenter, b.weight, b.width,
+               b.length, b.gsm, b.temperature`,
+      [batch_id.trim()]
+    );
+    if (rows.length === 0) {
+      return { success: false, message: "Batch not found.", code: "NOT_FOUND" };
+    }
+    return { success: true, data: rows[0] };
+  } catch (err) {
+    console.error("[DB] batches:get error:", err.message);
+    return { success: false, message: "Failed to fetch batch." };
+  }
+});
+
 ipcMain.handle("batches:update-full", async (_event, { old_id, batch }) => {
   const client = await pool.connect();
   try {
