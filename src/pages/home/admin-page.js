@@ -1,4 +1,4 @@
-﻿/**
+/**
  * src/pages/home/admin-page.js â€” Admin Dashboard
  *
  * Renders the admin dashboard with:
@@ -31,38 +31,8 @@
 
   // â”€â”€ Date Controls Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // ── Build aggregated data from real batchRegistry ────────────────────────
-  // Returns { dates: { "YYYY-MM-DD": { chemName: totalDensity } }, chemNames: [...] }
-  function _buildBatchData() {
+  function _renderDateControls() {
     var s = H.getState();
-    var batches = s.batchRegistry || [];
-    var chemReg = s.chemRegistry || [];
-    var dates = {};
-    var chemSet = {};
-
-    batches.forEach(function (b) {
-      var d = b.schedule_date || "";
-      if (!d) return;
-      if (!dates[d]) dates[d] = {};
-      (b.chemicals || []).forEach(function (c) {
-        var name = c.chemical_name || c.chemical_id || "Unknown";
-        chemSet[name] = true;
-        dates[d][name] = (dates[d][name] || 0) + (parseFloat(c.density) || 0);
-      });
-    });
-
-    // If no batch data yet, derive chemical names from chemRegistry
-    var chemNames = Object.keys(chemSet);
-    if (chemNames.length === 0) {
-      chemNames = chemReg.map(function (c) { return c.chemical_name; });
-    }
-
-    return { dates: dates, chemNames: chemNames };
-  }
-
-  function _renderDateControls(allActiveDates, allDates) {
-    var s = H.getState();
-    var minDate = allDates.length > 0 ? allDates[0] : H.todayISO();
-    var maxDate = allDates.length > 0 ? allDates[allDates.length - 1] : H.todayISO();
     var isSingle = s.adminDateMode === "single";
 
     var inputStyle =
@@ -81,18 +51,18 @@
         '<div style="display:flex;align-items:center;gap:8px">' +
         '<label style="' + labelStyle + '">Date</label>' +
         '<input id="inp-admin-single-date" type="date" value="' + s.adminSingleDate +
-        '" min="' + minDate + '" max="' + maxDate + '" style="' + inputStyle + '" />' +
+        '" style="' + inputStyle + '" />' +
         "</div>";
     } else {
-      var rangeDays = allActiveDates.length;
+      var rangeDays = _getDatesInRange(s.adminDateFrom, s.adminDateTo).length;
       dateFields =
         '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
         '<label style="' + labelStyle + '">From</label>' +
         '<input id="inp-admin-date-from" type="date" value="' + s.adminDateFrom +
-        '" min="' + minDate + '" max="' + s.adminDateTo + '" style="' + inputStyle + '" />' +
+        '" max="' + s.adminDateTo + '" style="' + inputStyle + '" />' +
         '<label style="' + labelStyle + '">To</label>' +
         '<input id="inp-admin-date-to" type="date" value="' + s.adminDateTo +
-        '" min="' + s.adminDateFrom + '" max="' + maxDate + '" style="' + inputStyle + '" />' +
+        '" min="' + s.adminDateFrom + '" style="' + inputStyle + '" />' +
         '<span style="font-size:12px;color:' + H.ACCENT + ';background:' + H.ACCENT_LIGHT +
         ';padding:4px 12px;border-radius:20px;font-weight:700">' + rangeDays + "d selected</span>" +
         "</div>";
@@ -116,21 +86,46 @@
     );
   }
 
-  // â”€â”€ SVG Bar Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  function _renderBarChart(aggregated, subtitle, chemNames) {
-    if (!chemNames || chemNames.length === 0) {
-      return '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
-        ';border-radius:12px;padding:24px;margin-bottom:20px;text-align:center;color:' + H.MUTED +
-        ';font-size:14px">No chemical data available. Import batches to see analytics.</div>';
+  // -- SVG Bar Chart (from real analytics data) --
+  function _renderBarChart() {
+    var s = H.getState();
+    var data = s.analyticsBarData || [];
+    var loading = s.analyticsBarLoading;
+
+    var subtitle = "";
+    if (s.adminDateMode === "single") {
+      subtitle = "Usage on " + _fmtDate(s.adminSingleDate);
+    } else {
+      subtitle = "Aggregated: " + _fmtDate(s.adminDateFrom) + " \u2013 " + _fmtDate(s.adminDateTo);
     }
-    var vals = chemNames.map(function (c) { return aggregated[c] || 0; });
+
+    if (loading) {
+      return '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
+        ';border-radius:12px;padding:48px 24px;margin-bottom:20px;text-align:center">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:analytSpin 1s linear infinite;margin:0 auto;display:block">' +
+        '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/></svg>' +
+        '<div style="font-size:13px;color:' + H.MUTED + ';margin-top:8px">Loading chart data\u2026</div></div>';
+    }
+
+    if (!data || data.length === 0) {
+      return '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
+        ';border-radius:12px;padding:24px;margin-bottom:20px">' +
+        '<div style="margin-bottom:12px">' +
+        '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + '">Total Chemical Consumption</div>' +
+        '<div style="font-size:12px;color:' + H.MUTED + ';margin-top:3px">' + subtitle + '</div></div>' +
+        '<div style="text-align:center;padding:32px 0;color:' + H.MUTED + ';font-size:14px">' +
+        'No production records found for the selected date' + (s.adminDateMode === "range" ? " range" : "") + '.' +
+        '</div></div>';
+    }
+
+    var chemNames = data.map(function (d) { return d.chemical_name; });
+    var vals = data.map(function (d) { return parseFloat(d.total_dosage) || 0; });
     var maxVal = Math.max.apply(null, vals.concat([1]));
 
     var barW = 56, gap = 18, chartH = 180;
     var total = chemNames.length;
     var svgW = total * (barW + gap) + gap;
 
-    // Grid lines at 0%, 25%, 50%, 75%, 100%
     var gridSvg = "";
     [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
       var y = chartH - f * chartH;
@@ -143,16 +138,15 @@
         gridSvg +=
           '<text x="4" y="' + (y - 4) +
           '" font-size="9" fill="#9CA3AF" font-family="IBM Plex Mono, monospace">' +
-          Math.round(f * maxVal) + "g</text>";
+          Math.round(f * maxVal * 100) / 100 + "</text>";
       }
     });
 
-    // Bars + labels
     var barsSvg = "";
     var legendHtml = "";
     chemNames.forEach(function (chem, i) {
       var color = H.CHEM_COLORS[i % H.CHEM_COLORS.length];
-      var val = aggregated[chem] || 0;
+      var val = vals[i];
       var roundVal = Math.round(val * 100) / 100;
       var barH = Math.max((val / maxVal) * chartH, 2);
       var x = gap + i * (barW + gap);
@@ -183,7 +177,7 @@
         '<div style="display:flex;align-items:center;gap:6px;font-size:12px">' +
         '<div style="width:10px;height:10px;border-radius:3px;background:' + color + '"></div>' +
         '<span style="color:' + H.TEXT + ';font-weight:500">' + chem + "</span>" +
-        '<span style="color:' + color + ";font-family:'IBM Plex Mono',monospace;font-weight:700\">" +
+        '<span style="color:' + color + ";font-family:\'IBM Plex Mono\',monospace;font-weight:700\">" +
         roundVal + "</span>" +
         "</div>";
     });
@@ -206,39 +200,129 @@
     );
   }
 
-  // â”€â”€ SVG Line Charts (2-column grid) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  function _renderLineCharts(allDates, chemNames, batchDates) {
-    if (!chemNames || chemNames.length === 0) return "";
-    var todayStr = allDates[allDates.length - 1];
-    var charts = "";
-    chemNames.forEach(function (chem, idx) {
-      charts += _renderSingleLineChart(chem, idx, allDates, todayStr, batchDates);
+  // -- Trend Chart Section (single chemical selector + line chart) --
+  function _renderTrendSection() {
+    var s = H.getState();
+    var chemNames = s.analyticsChemNames || [];
+    var selectedChem = s.analyticsSelectedChem || "";
+    var trendRange = s.analyticsTrendRange || "week";
+    var trendData = s.analyticsTrendData || [];
+    var loading = s.analyticsTrendLoading;
+
+    var inputStyle =
+      "height:38px;border:1.5px solid " + H.BORDER +
+      ";border-radius:8px;padding:0 12px;font-size:13px;" +
+      "font-family:'IBM Plex Sans',sans-serif;color:" + H.TEXT +
+      ";background:#FAFBFC;outline:none;";
+
+    // Chemical selector dropdown
+    var chemOptions = '<option value="">Select a chemical\u2026</option>';
+    chemNames.forEach(function (name) {
+      chemOptions += '<option value="' + H.escape(name) + '"' +
+        (name === selectedChem ? ' selected' : '') + '>' + H.escape(name) + '</option>';
     });
-    return (
-      '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + ';margin-bottom:14px">' +
-      "Daily Usage per Chemical" +
-      '<span style="font-size:12px;font-weight:400;color:' + H.MUTED + ';margin-left:10px">' + allDates.length + ' days</span>' +
-      "</div>" +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' + charts + "</div>"
-    );
+
+    // Range preset buttons
+    var ranges = [
+      { id: "week",   label: "7 Days" },
+      { id: "month",  label: "30 Days" },
+      { id: "3month", label: "90 Days" },
+      { id: "custom", label: "Custom" },
+    ];
+    var rangeBtns = '<div style="display:flex;gap:0;border:1.5px solid ' + H.BORDER + ';border-radius:8px;overflow:hidden">';
+    ranges.forEach(function (r) {
+      var isActive = trendRange === r.id;
+      rangeBtns +=
+        '<button data-trend-range="' + r.id + '" style="padding:7px 16px;font-size:12px;font-weight:' +
+        (isActive ? "600" : "400") + ';cursor:pointer;background:' + (isActive ? H.ACCENT : "transparent") +
+        ";color:" + (isActive ? "#fff" : H.MUTED) +
+        ";border:none;font-family:'IBM Plex Sans',sans-serif\">" + r.label + "</button>";
+    });
+    rangeBtns += '</div>';
+
+    var customDates = "";
+    if (trendRange === "custom") {
+      customDates =
+        '<div style="display:flex;align-items:center;gap:8px;margin-top:12px">' +
+        '<label style="font-size:12px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em">From</label>' +
+        '<input id="inp-trend-from" type="date" value="' + s.analyticsTrendFrom + '" max="' + s.analyticsTrendTo + '" style="' + inputStyle + '" />' +
+        '<label style="font-size:12px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em">To</label>' +
+        '<input id="inp-trend-to" type="date" value="' + s.analyticsTrendTo + '" min="' + s.analyticsTrendFrom + '" style="' + inputStyle + '" />' +
+        '</div>';
+    }
+
+    // Controls card
+    var controls =
+      '<div style="background:' + H.CARD + ";border:1px solid " + H.BORDER +
+      ';border-radius:12px;padding:16px 20px;margin-bottom:20px">' +
+      '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + ';margin-bottom:14px">Chemical Usage Trend</div>' +
+      '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+      '<label style="font-size:12px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em">Chemical</label>' +
+      '<select id="sel-trend-chem" style="height:38px;min-width:200px;border:1.5px solid ' + H.BORDER +
+      ';border-radius:8px;padding:0 12px;font-size:13px;font-family:\'IBM Plex Sans\',sans-serif;color:' + H.TEXT +
+      ';background:#FAFBFC;outline:none">' +
+      chemOptions + '</select></div>' +
+      rangeBtns +
+      '</div>' +
+      customDates +
+      '</div>';
+
+    // Chart body
+    var chart = "";
+    if (s.analyticsChemNamesLoading) {
+      chart = '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
+        ';border-radius:12px;padding:48px 24px;text-align:center">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:analytSpin 1s linear infinite;margin:0 auto;display:block">' +
+        '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/></svg>' +
+        '<div style="font-size:13px;color:' + H.MUTED + ';margin-top:8px">Loading chemicals\u2026</div></div>';
+    } else if (!selectedChem) {
+      chart = '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
+        ';border-radius:12px;padding:48px 24px;text-align:center;color:' + H.MUTED + ';font-size:14px">' +
+        'Select a chemical above to view its usage trend.</div>';
+    } else if (loading) {
+      chart = '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
+        ';border-radius:12px;padding:48px 24px;text-align:center">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:analytSpin 1s linear infinite;margin:0 auto;display:block">' +
+        '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/></svg>' +
+        '<div style="font-size:13px;color:' + H.MUTED + ';margin-top:8px">Loading trend data\u2026</div></div>';
+    } else if (trendData.length === 0) {
+      chart = '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER +
+        ';border-radius:12px;padding:48px 24px;text-align:center;color:' + H.MUTED + ';font-size:14px">' +
+        'No production data found for <b>' + H.escape(selectedChem) + '</b> in the selected date range.</div>';
+    } else {
+      chart = _renderTrendLineChart(selectedChem, trendData);
+    }
+
+    return controls + chart +
+      '<style>@keyframes analytSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>';
   }
 
-  function _renderSingleLineChart(chem, idx, allDates, todayStr, batchDates) {
-    var color = H.CHEM_COLORS[idx % H.CHEM_COLORS.length];
-    var values = allDates.map(function (d) {
-      return batchDates[d] ? (batchDates[d][chem] || 0) : 0;
+  // -- Single Trend Line Chart --
+  function _renderTrendLineChart(chemName, trendData) {
+    var color = H.CHEM_COLORS[0];
+    var s = H.getState();
+    var allNames = s.analyticsChemNames || [];
+    for (var ci = 0; ci < allNames.length; ci++) {
+      if (allNames[ci] === chemName) { color = H.CHEM_COLORS[ci % H.CHEM_COLORS.length]; break; }
+    }
+
+    var allDates = trendData.map(function (d) {
+      var ds = typeof d.date === "string" ? d.date.slice(0, 10) : new Date(d.date).toISOString().slice(0, 10);
+      return ds;
     });
+    var values = trendData.map(function (d) { return parseFloat(d.total_dosage) || 0; });
 
     // Stats
     var sum = 0;
     values.forEach(function (v) { sum += v; });
-    var avg = Math.round(sum / values.length);
-    var latest = batchDates[todayStr] ? (batchDates[todayStr][chem] || 0) : 0;
+    var avg = values.length > 0 ? Math.round((sum / values.length) * 100) / 100 : 0;
+    var latest = values.length > 0 ? Math.round(values[values.length - 1] * 100) / 100 : 0;
 
     // Chart dimensions
-    var chartH = 110;
-    var chartW = Math.max(allDates.length * 26, 280);
-    var pad = { l: 36, r: 12, t: 14, b: 28 };
+    var chartH = 180;
+    var chartW = Math.max(allDates.length * 40, 400);
+    var pad = { l: 50, r: 16, t: 20, b: 34 };
     var w = chartW + pad.l + pad.r;
     var h = chartH + pad.t + pad.b;
 
@@ -260,27 +344,27 @@
       polyline + " " +
       (pad.l + chartW) + "," + (pad.t + chartH);
 
-    // Y-axis (min, mid, max)
-    var yAxisSvg = [0, 0.5, 1].map(function (f) {
+    // Y-axis grid
+    var yAxisSvg = [0, 0.25, 0.5, 0.75, 1].map(function (f) {
       var y = pad.t + chartH - f * chartH;
-      var val = Math.round(minVal + f * (maxVal - minVal));
+      var val = Math.round((minVal + f * (maxVal - minVal)) * 100) / 100;
       return (
         '<line x1="' + pad.l + '" y1="' + y + '" x2="' + (pad.l + chartW) + '" y2="' + y +
         '" stroke="#F3F4F6" stroke-width="1"/>' +
-        '<text x="' + (pad.l - 4) + '" y="' + (y + 4) +
-        '" text-anchor="end" font-size="8" fill="#9CA3AF" font-family="IBM Plex Mono, monospace">' +
-        val + "g</text>"
+        '<text x="' + (pad.l - 6) + '" y="' + (y + 4) +
+        '" text-anchor="end" font-size="9" fill="#9CA3AF" font-family="IBM Plex Mono, monospace">' +
+        val + "</text>"
       );
     }).join("");
 
-    // X-axis date labels (every showEvery points + last)
-    var showEvery = Math.ceil(allDates.length / 6);
+    // X-axis date labels
+    var showEvery = Math.max(1, Math.ceil(allDates.length / 8));
     var xLabels = "";
     pts.forEach(function (p, i) {
       if (i % showEvery === 0 || i === allDates.length - 1) {
         xLabels +=
           '<text x="' + p[0] + '" y="' + (h - 4) +
-          '" text-anchor="middle" font-size="8" fill="#9CA3AF" font-family="IBM Plex Mono, monospace">' +
+          '" text-anchor="middle" font-size="9" fill="#9CA3AF" font-family="IBM Plex Mono, monospace">' +
           _fmtDate(allDates[i]) + "</text>";
       }
     });
@@ -289,29 +373,31 @@
     var dots = pts.map(function (p) {
       return (
         '<circle cx="' + p[0] + '" cy="' + p[1] +
-        '" r="2.5" fill="' + color + '"/>'
+        '" r="3.5" fill="' + color + '" stroke="#fff" stroke-width="1.5"/>'
       );
     }).join("");
 
     return (
       '<div style="background:' + H.CARD + ";border:1px solid " + H.BORDER +
-      ';border-radius:12px;padding:18px 20px">' +
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">' +
-      '<div style="width:10px;height:10px;border-radius:3px;background:' + color + ';flex-shrink:0"></div>' +
-      '<span style="font-size:13px;font-weight:700;color:' + H.TEXT + '">' + chem + "</span>" +
-      '<div style="margin-left:auto;display:flex;gap:10px">' +
-      '<span style="font-size:11px;color:' + H.MUTED + '">avg <b style="color:' + H.TEXT +
-      ";font-family:'IBM Plex Mono',monospace\">" + avg + "g</b></span>" +
-      '<span style="font-size:11px;color:' + H.MUTED + '">today <b style="color:' + color +
-      ";font-family:'IBM Plex Mono',monospace\">" + latest + "g</b></span>" +
+      ';border-radius:12px;padding:20px 24px">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
+      '<div style="width:12px;height:12px;border-radius:4px;background:' + color + ';flex-shrink:0"></div>' +
+      '<span style="font-size:14px;font-weight:700;color:' + H.TEXT + '">' + H.escape(chemName) + '</span>' +
+      '<div style="margin-left:auto;display:flex;gap:16px">' +
+      '<span style="font-size:12px;color:' + H.MUTED + '">avg <b style="color:' + H.TEXT +
+      ";font-family:'IBM Plex Mono',monospace\">" + avg + "</b></span>" +
+      '<span style="font-size:12px;color:' + H.MUTED + '">latest <b style="color:' + color +
+      ";font-family:'IBM Plex Mono',monospace\">" + latest + "</b></span>" +
+      '<span style="font-size:12px;color:' + H.MUTED + '">total <b style="color:' + H.TEXT +
+      ";font-family:'IBM Plex Mono',monospace\">" + (Math.round(sum * 100) / 100) + "</b></span>" +
       "</div></div>" +
       '<div style="overflow-x:auto">' +
       '<svg width="' + w + '" height="' + h +
       '" style="font-family:\'IBM Plex Sans\',sans-serif;display:block">' +
       yAxisSvg +
-      '<polygon points="' + area + '" fill="' + color + '" opacity="0.1"/>' +
+      '<polygon points="' + area + '" fill="' + color + '" opacity="0.08"/>' +
       '<polyline points="' + polyline + '" fill="none" stroke="' + color +
-      '" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
       dots + xLabels +
       "</svg></div></div>"
     );
@@ -563,8 +649,23 @@
     var registry = s.multiplierRegistry || [];
     var loading  = s.multiplierRegistryLoading || false;
 
+    // Helper: format multiplier to show full precision (3-6 decimal digits)
+    function fmtMult(val) {
+      var n = parseFloat(val);
+      if (isNaN(n)) return '0';
+      // Show up to 6 decimal places, trim trailing zeros but keep at least 3
+      var s6 = n.toFixed(6);
+      // Remove trailing zeros after the 3rd decimal place
+      var parts = s6.split('.');
+      var dec = parts[1] || '000000';
+      // Keep at least 3 decimals, remove trailing zeros beyond that
+      var minDec = dec.substring(0, 3);
+      var rest = dec.substring(3).replace(/0+$/, '');
+      return parts[0] + '.' + minDec + rest;
+    }
+
     var inpStyle =
-      'width:110px;height:38px;border:1.5px solid ' + H.BORDER +
+      'width:140px;height:38px;border:1.5px solid ' + H.BORDER +
       ';border-radius:8px;padding:0 10px;font-size:14px;' +
       "font-family:'IBM Plex Mono',monospace;color:" + H.TEXT +
       ';background:#fff;outline:none;box-sizing:border-box';
@@ -572,14 +673,14 @@
     var tableBody = '';
     if (loading) {
       tableBody =
-        '<tr><td colspan="4" style="padding:48px;text-align:center">' +
+        '<tr><td colspan="5" style="padding:48px;text-align:center">' +
         '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:chemSpin 1s linear infinite;margin:0 auto;display:block">' +
         '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/></svg>' +
         '<div style="font-size:13px;color:' + H.MUTED + ';margin-top:8px">Loading multipliers\u2026</div>' +
         '</td></tr>';
     } else if (registry.length === 0) {
       tableBody =
-        '<tr><td colspan="4" style="padding:40px;text-align:center;color:' + H.MUTED + ';font-size:14px">' +
+        '<tr><td colspan="5" style="padding:40px;text-align:center;color:' + H.MUTED + ';font-size:14px">' +
         'No multiplier data found in the database.' +
         '</td></tr>';
     } else {
@@ -593,22 +694,25 @@
           ';padding:5px 14px;border-radius:7px;font-family:\'IBM Plex Mono\',monospace;font-size:13px;font-weight:700">' +
           range + '</span>' +
           '</td>' +
-          // Wet multiplier input
+          // Wet multiplier input (step 0.000001 for 6 decimal precision)
           '<td style="padding:14px 18px">' +
-          '<input id="inp-wet-mult-' + range + '" type="number" step="0.01" min="0.01" value="' +
-          parseFloat(r.wet_multiplier).toFixed(2) + '" style="' + inpStyle + '" />' +
+          '<input id="inp-wet-mult-' + range + '" type="number" step="0.000001" min="0.000001" value="' +
+          fmtMult(r.wet_multiplier) + '" style="' + inpStyle + '" />' +
           '</td>' +
-          // Dry multiplier input
+          // Dry multiplier input (step 0.000001 for 6 decimal precision)
           '<td style="padding:14px 18px">' +
-          '<input id="inp-dry-mult-' + range + '" type="number" step="0.01" min="0.01" value="' +
-          parseFloat(r.dry_multiplier).toFixed(2) + '" style="' + inpStyle + '" />' +
+          '<input id="inp-dry-mult-' + range + '" type="number" step="0.000001" min="0.000001" value="' +
+          fmtMult(r.dry_multiplier) + '" style="' + inpStyle + '" />' +
           '</td>' +
-          // Save button + inline error
+          // Save & Delete buttons + inline message
           '<td style="padding:14px 18px">' +
-          '<div style="display:flex;align-items:center;gap:10px">' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
           '<button data-save-multiplier="' + range + '" style="height:36px;padding:0 20px;background:' + H.ACCENT +
           ';color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;' +
           "font-family:'IBM Plex Sans',sans-serif\">Save</button>" +
+          '<button data-delete-multiplier="' + range + '" style="height:36px;padding:0 14px;background:none;' +
+          'border:1px solid ' + H.DANGER + ';color:' + H.DANGER + ';border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;' +
+          "font-family:'IBM Plex Sans',sans-serif\">&times;</button>" +
           '<span id="mult-msg-' + range + '" style="font-size:12px"></span>' +
           '</div>' +
           '</td>' +
@@ -616,14 +720,44 @@
       });
     }
 
+    // ── Add New Multiplier Row Form ──────────────────────────────────────────
+    var addRowForm =
+      '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:12px;padding:20px 24px;margin-bottom:20px">' +
+      '<div style="font-size:14px;font-weight:700;color:' + H.TEXT + ';margin-bottom:12px">Add New GSM Range</div>' +
+      '<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">' +
+      '<div>' +
+      '<label style="display:block;font-size:11px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Range Min</label>' +
+      '<input id="inp-new-mult-min" type="number" step="1" min="0" placeholder="e.g. 200" style="' + inpStyle + ';width:100px" />' +
+      '</div>' +
+      '<div>' +
+      '<label style="display:block;font-size:11px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Range Max</label>' +
+      '<input id="inp-new-mult-max" type="number" step="1" min="0" placeholder="e.g. 220" style="' + inpStyle + ';width:100px" />' +
+      '</div>' +
+      '<div>' +
+      '<label style="display:block;font-size:11px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Wet Multiplier</label>' +
+      '<input id="inp-new-mult-wet" type="number" step="0.000001" min="0.000001" placeholder="e.g. 2.200" style="' + inpStyle + ';width:120px" />' +
+      '</div>' +
+      '<div>' +
+      '<label style="display:block;font-size:11px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Dry Multiplier</label>' +
+      '<input id="inp-new-mult-dry" type="number" step="0.000001" min="0.000001" placeholder="e.g. 2.200" style="' + inpStyle + ';width:120px" />' +
+      '</div>' +
+      '<button id="btn-add-multiplier" style="height:38px;padding:0 22px;background:' + H.SUCCESS +
+      ';color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;' +
+      "font-family:'IBM Plex Sans',sans-serif\">+ Add Range</button>" +
+      '<span id="mult-add-msg" style="font-size:12px"></span>' +
+      '</div>' +
+      '</div>';
+
     return (
       // Info card
       '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:12px;padding:22px 24px;margin-bottom:20px">' +
       '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + ';margin-bottom:4px">GSM Range Multipliers</div>' +
       '<div style="font-size:12px;color:' + H.MUTED + ';line-height:1.6">' +
       'These multipliers feed directly into the chemical dosage algorithm: <code style="background:#F3F4F6;padding:1px 6px;border-radius:4px">Total Bath = (Width \u00d7 Length) \u00d7 Multiplier</code>. ' +
-      'Set separate values for <b>Wet</b> and <b>Dry</b> cloth for each GSM range. Changes saved here take effect on the next calculation.</div>' +
+      'Set separate values for <b>Wet</b> and <b>Dry</b> cloth for each GSM range. Multiplier values support 3\u20136 decimal places. Changes saved here take effect on the next calculation.</div>' +
       '</div>' +
+      // Add new range form
+      addRowForm +
       // Table card
       '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:12px;overflow:hidden">' +
       '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
@@ -862,42 +996,6 @@
   // ── Main Admin Renderer ────────────────────────────────────────────────────
   function renderAdmin() {
     var s = H.getState();
-    var batchData = _buildBatchData();
-    var batchDates = batchData.dates;
-    var chemNames = batchData.chemNames;
-    var allDates = Object.keys(batchDates).sort();
-
-    // Determine active dates for bar chart aggregation
-    var activeDates = [];
-    if (s.adminDateMode === "single") {
-      if (batchDates[s.adminSingleDate]) {
-        activeDates = [s.adminSingleDate];
-      }
-    } else {
-      activeDates = _getDatesInRange(s.adminDateFrom, s.adminDateTo).filter(function (d) {
-        return !!batchDates[d];
-      });
-    }
-
-    // Subtitle for bar chart card
-    var subtitle = "";
-    if (s.adminDateMode === "single") {
-      subtitle = "Usage on " + _fmtDate(s.adminSingleDate);
-    } else {
-      subtitle = "Aggregated: " + _fmtDate(s.adminDateFrom) + " \u2013 " + _fmtDate(s.adminDateTo);
-    }
-
-    // Aggregate from real batch data
-    var aggregated = {};
-    chemNames.forEach(function (c) { aggregated[c] = 0; });
-    activeDates.forEach(function (d) {
-      chemNames.forEach(function (c) { aggregated[c] += (batchDates[d] && batchDates[d][c]) || 0; });
-    });
-
-    // All calendar days in range (for badge count)
-    var allActiveDates = s.adminDateMode === "range"
-      ? _getDatesInRange(s.adminDateFrom, s.adminDateTo)
-      : activeDates;
 
     return (
       '<div style="font-family:\'IBM Plex Sans\',sans-serif;background:' + H.BG +
@@ -931,9 +1029,9 @@
             ? _renderMultipliersTab(s)
             : s.adminTab === "production"
               ? _renderProductionTab(s)
-              : _renderDateControls(allActiveDates, allDates) +
-                _renderBarChart(aggregated, subtitle, chemNames) +
-                _renderLineCharts(allDates, chemNames, batchDates)
+              : _renderDateControls() +
+                _renderBarChart() +
+                _renderTrendSection()
       ) +
       "</div></div>" +
 

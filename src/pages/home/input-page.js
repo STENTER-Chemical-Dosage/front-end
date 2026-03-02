@@ -17,7 +17,7 @@
     var errors = s.errors || {};
 
     // Stenter dropdown
-    var stenterOpts = ["Stenter 1", "Stenter 2", "Stenter 3"]
+    var stenterOpts = ["Stenter 2", "Stenter 3"]
       .map(function (v) {
         return '<option value="' + v + '"' + (s.stenter === v ? " selected" : "") + ">" + v + "</option>";
       })
@@ -86,7 +86,7 @@
 
       // Cloth Weight
       "<div>" +
-      '<label style="' + H.styles.label() + '">Cloth Weight (kg)</label>' +
+      '<label style="' + H.styles.label() + '">Weight (kg)</label>' +
       '<input id="inp-weight" type="number" value="' + H.escape(s.clothWeight) + '" placeholder="0" style="' + H.styles.monoInput(errors.clothWeight) + '" />' +
       (errors.clothWeight ? '<div style="' + H.styles.err() + '">' + errors.clothWeight + "</div>" : "") +
       "</div>" +

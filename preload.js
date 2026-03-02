@@ -105,6 +105,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
   multipliersUpdate: (gsm_range, wet_multiplier, dry_multiplier) =>
     ipcRenderer.invoke("multipliers:update", { gsm_range, wet_multiplier, dry_multiplier }),
 
+  /**
+   * multipliersAdd — Inserts a new GSM range multiplier row.
+   */
+  multipliersAdd: (gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order) =>
+    ipcRenderer.invoke("multipliers:add", { gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order }),
+
+  /**
+   * multipliersDelete — Deletes a GSM range multiplier row.
+   * @param {string} gsm_range  e.g. "200-220"
+   */
+  multipliersDelete: (gsm_range) =>
+    ipcRenderer.invoke("multipliers:delete", { gsm_range }),
+
   // ── Production Record IPC wrappers ─────────────────────────────────────
 
   /**
@@ -126,4 +139,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
    */
   productionDelete: (id) =>
     ipcRenderer.invoke("production:delete", { id }),
+
+  // ── Analytics IPC wrappers ───────────────────────────────────────────────
+
+  /**
+   * analyticsDailyUsage — Aggregated chemical dosages for a date range.
+   * @param {string} dateFrom — YYYY-MM-DD
+   * @param {string} dateTo   — YYYY-MM-DD
+   */
+  analyticsDailyUsage: (dateFrom, dateTo) =>
+    ipcRenderer.invoke("analytics:daily-usage", { dateFrom, dateTo }),
+
+  /**
+   * analyticsChemicalTrend — Daily dosage totals for one chemical over a date range.
+   * @param {string} chemicalName
+   * @param {string} dateFrom — YYYY-MM-DD
+   * @param {string} dateTo   — YYYY-MM-DD
+   */
+  analyticsChemicalTrend: (chemicalName, dateFrom, dateTo) =>
+    ipcRenderer.invoke("analytics:chemical-trend", { chemicalName, dateFrom, dateTo }),
+
+  /**
+   * analyticsChemicalNames — Distinct chemical names from production records.
+   */
+  analyticsChemicalNames: () =>
+    ipcRenderer.invoke("analytics:chemical-names"),
 });

@@ -153,6 +153,16 @@ async function initDB() {
         { gsm_range: "140-160", range_min: 140, range_max: 160, wet: 1.6, dry: 1.6, order: 3 },
         { gsm_range: "160-180", range_min: 160, range_max: 180, wet: 1.8, dry: 1.8, order: 4 },
         { gsm_range: "180-200", range_min: 180, range_max: 200, wet: 2.0, dry: 2.0, order: 5 },
+        { gsm_range: "200-220", range_min: 200, range_max: 220, wet: 2.2, dry: 2.2, order: 6 },
+        { gsm_range: "220-240", range_min: 220, range_max: 240, wet: 2.4, dry: 2.4, order: 7 },
+        { gsm_range: "240-260", range_min: 240, range_max: 260, wet: 2.6, dry: 2.6, order: 8 },
+        { gsm_range: "260-280", range_min: 260, range_max: 280, wet: 2.8, dry: 2.8, order: 9 },
+        { gsm_range: "280-300", range_min: 280, range_max: 300, wet: 3.0, dry: 3.0, order: 10 },
+        { gsm_range: "300-320", range_min: 300, range_max: 320, wet: 3.2, dry: 3.2, order: 11 },
+        { gsm_range: "320-340", range_min: 320, range_max: 340, wet: 3.4, dry: 3.4, order: 12 },
+        { gsm_range: "340-360", range_min: 340, range_max: 360, wet: 3.6, dry: 3.6, order: 13 },
+        { gsm_range: "360-380", range_min: 360, range_max: 380, wet: 3.8, dry: 3.8, order: 14 },
+        { gsm_range: "380-400", range_min: 380, range_max: 400, wet: 4.0, dry: 4.0, order: 15 },
       ];
       for (const d of defaults) {
         await client.query(
@@ -161,7 +171,32 @@ async function initDB() {
           [d.gsm_range, d.range_min, d.range_max, d.wet, d.dry, d.order]
         );
       }
-      console.log("[DB] gsm_multipliers seeded with 5 default ranges.");
+      console.log("[DB] gsm_multipliers seeded with 15 default ranges (100-400).");
+    } else {
+      // Insert any missing ranges from 200-400 that don't already exist
+      const extendedDefaults = [
+        { gsm_range: "200-220", range_min: 200, range_max: 220, wet: 2.2, dry: 2.2, order: 6 },
+        { gsm_range: "220-240", range_min: 220, range_max: 240, wet: 2.4, dry: 2.4, order: 7 },
+        { gsm_range: "240-260", range_min: 240, range_max: 260, wet: 2.6, dry: 2.6, order: 8 },
+        { gsm_range: "260-280", range_min: 260, range_max: 280, wet: 2.8, dry: 2.8, order: 9 },
+        { gsm_range: "280-300", range_min: 280, range_max: 300, wet: 3.0, dry: 3.0, order: 10 },
+        { gsm_range: "300-320", range_min: 300, range_max: 320, wet: 3.2, dry: 3.2, order: 11 },
+        { gsm_range: "320-340", range_min: 320, range_max: 340, wet: 3.4, dry: 3.4, order: 12 },
+        { gsm_range: "340-360", range_min: 340, range_max: 360, wet: 3.6, dry: 3.6, order: 13 },
+        { gsm_range: "360-380", range_min: 360, range_max: 380, wet: 3.8, dry: 3.8, order: 14 },
+        { gsm_range: "380-400", range_min: 380, range_max: 400, wet: 4.0, dry: 4.0, order: 15 },
+      ];
+      for (const d of extendedDefaults) {
+        try {
+          await client.query(
+            `INSERT INTO gsm_multipliers (gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (gsm_range) DO NOTHING`,
+            [d.gsm_range, d.range_min, d.range_max, d.wet, d.dry, d.order]
+          );
+        } catch (_) { /* ignore duplicates */ }
+      }
+      console.log("[DB] gsm_multipliers checked/extended for 200-400 ranges.");
     }
 
     console.log("[DB] Database initialised — users, chemicals, batches, gsm_multipliers & production_records tables ready.");
@@ -587,6 +622,39 @@ ipcMain.handle("multipliers:update", async (_event, { gsm_range, wet_multiplier,
   }
 });
 
+/**
+ * multipliers:add — Inserts a new GSM range multiplier row.
+ */
+ipcMain.handle("multipliers:add", async (_event, { gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order }) => {
+  try {
+    await pool.query(
+      `INSERT INTO gsm_multipliers (gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order]
+    );
+    return { success: true };
+  } catch (err) {
+    if (err.code === "23505") {
+      return { success: false, message: "A multiplier for range \"" + gsm_range + "\" already exists.", code: "DUPLICATE" };
+    }
+    console.error("[DB] multipliers:add error:", err.message);
+    return { success: false, message: "Failed to add multiplier.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * multipliers:delete — Deletes a GSM range multiplier row.
+ */
+ipcMain.handle("multipliers:delete", async (_event, { gsm_range }) => {
+  try {
+    await pool.query("DELETE FROM gsm_multipliers WHERE gsm_range = $1", [gsm_range]);
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] multipliers:delete error:", err.message);
+    return { success: false, message: "Failed to delete multiplier.", code: "UNKNOWN" };
+  }
+});
+
 // ── Production Record Handlers ─────────────────────────────────────────────────
 
 /**
@@ -694,6 +762,77 @@ ipcMain.handle("production:delete", async (_event, { id }) => {
   } catch (err) {
     console.error("[DB] production:delete error:", err.message);
     return { success: false, message: "Failed to delete production record." };
+  }
+});
+
+// ── Analytics Handlers ─────────────────────────────────────────────────────────
+
+/**
+ * analytics:daily-usage — Aggregated chemical dosages for a date or date range.
+ * Groups by chemical_name, sums dosage from production_chemicals.
+ * Dates are compared against submitted_at (cast to date).
+ */
+ipcMain.handle("analytics:daily-usage", async (_event, { dateFrom, dateTo }) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pc.chemical_name,
+              SUM(pc.dosage) AS total_dosage
+       FROM production_records pr
+       JOIN production_chemicals pc ON pr.id = pc.record_id
+       WHERE pr.submitted_at::date >= $1::date
+         AND pr.submitted_at::date <= $2::date
+       GROUP BY pc.chemical_name
+       ORDER BY pc.chemical_name`,
+      [dateFrom, dateTo]
+    );
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] analytics:daily-usage error:", err.message);
+    return { success: false, message: "Failed to load daily usage data." };
+  }
+});
+
+/**
+ * analytics:chemical-trend — Daily dosage totals for a specific chemical over a date range.
+ * Returns one row per day with the summed dosage.
+ */
+ipcMain.handle("analytics:chemical-trend", async (_event, { chemicalName, dateFrom, dateTo }) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pr.submitted_at::date AS date,
+              SUM(pc.dosage)        AS total_dosage
+       FROM production_records pr
+       JOIN production_chemicals pc ON pr.id = pc.record_id
+       WHERE pc.chemical_name = $1
+         AND pr.submitted_at::date >= $2::date
+         AND pr.submitted_at::date <= $3::date
+       GROUP BY pr.submitted_at::date
+       ORDER BY pr.submitted_at::date`,
+      [chemicalName, dateFrom, dateTo]
+    );
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] analytics:chemical-trend error:", err.message);
+    return { success: false, message: "Failed to load chemical trend data." };
+  }
+});
+
+/**
+ * analytics:chemical-names — Returns distinct chemical names from production_chemicals.
+ * Used to populate the chemical selector dropdown in analytics.
+ */
+ipcMain.handle("analytics:chemical-names", async () => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT pc.chemical_name
+       FROM production_chemicals pc
+       WHERE pc.chemical_name IS NOT NULL AND pc.chemical_name != ''
+       ORDER BY pc.chemical_name`
+    );
+    return { success: true, data: rows.map(r => r.chemical_name) };
+  } catch (err) {
+    console.error("[DB] analytics:chemical-names error:", err.message);
+    return { success: false, message: "Failed to load chemical names." };
   }
 });
 

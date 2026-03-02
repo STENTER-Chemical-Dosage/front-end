@@ -142,6 +142,20 @@ window.HomeApp = (() => {
       prodSortDir: "desc",
       expandedProdId: null,
       prodSelectedIds: [],           // array of selected record IDs for XLSX export
+      // ── Admin – Analytics tab ────────────────────────────────────────────
+      analyticsBarData: [],            // [{ chemical_name, total_dosage }] for bar chart
+      analyticsBarLoading: false,
+      analyticsFetchedBar: false,
+      analyticsTrendData: [],          // [{ date, total_dosage }] for line chart
+      analyticsTrendLoading: false,
+      analyticsFetchedTrend: false,
+      analyticsChemNames: [],          // distinct chemical names from production records
+      analyticsChemNamesLoading: false,
+      analyticsFetchedChemNames: false,
+      analyticsSelectedChem: "",       // currently selected chemical for trend chart
+      analyticsTrendRange: "week",     // "week" | "month" | "3month" | "custom"
+      analyticsTrendFrom: daysAgoISO(6),
+      analyticsTrendTo: todayISO(),
     };
   }
 
@@ -183,6 +197,10 @@ window.HomeApp = (() => {
       batchFetchAttempted: _state.batchFetchAttempted || false,
       prodRegistry: _state.prodRegistry || [],
       prodFetchAttempted: _state.prodFetchAttempted || false,
+      analyticsChemNames: _state.analyticsChemNames || [],
+      analyticsFetchedChemNames: _state.analyticsFetchedChemNames || false,
+      multiplierRegistry: _state.multiplierRegistry || [],
+      multiplierFetchAttempted: _state.multiplierFetchAttempted || false,
     };
     _state = defaultState();
     Object.assign(_state, preserved);

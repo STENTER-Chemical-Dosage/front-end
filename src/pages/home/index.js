@@ -147,7 +147,7 @@ window.HomePage = (() => {
     // ── Date mode toggle (admin) ─────────────────────────────
     document.querySelectorAll("[data-datemode]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        H.setState({ adminDateMode: btn.dataset.datemode });
+        H.setState({ adminDateMode: btn.dataset.datemode, analyticsFetchedBar: false });
       });
     });
 
@@ -155,21 +155,21 @@ window.HomePage = (() => {
     var singleDate = document.getElementById("inp-admin-single-date");
     if (singleDate) {
       singleDate.addEventListener("change", function (e) {
-        H.setState({ adminSingleDate: e.target.value });
+        H.setState({ adminSingleDate: e.target.value, analyticsFetchedBar: false });
       });
     }
 
     var dateFrom = document.getElementById("inp-admin-date-from");
     if (dateFrom) {
       dateFrom.addEventListener("change", function (e) {
-        H.setState({ adminDateFrom: e.target.value });
+        H.setState({ adminDateFrom: e.target.value, analyticsFetchedBar: false });
       });
     }
 
     var dateTo = document.getElementById("inp-admin-date-to");
     if (dateTo) {
       dateTo.addEventListener("change", function (e) {
-        H.setState({ adminDateTo: e.target.value });
+        H.setState({ adminDateTo: e.target.value, analyticsFetchedBar: false });
       });
     }
 
@@ -182,6 +182,7 @@ window.HomePage = (() => {
           uploadState: "idle", uploadMsg: "", uploadedRows: [], importResult: null, chemFetchAttempted: false,
           batchUploadState: "idle", batchUploadMsg: "", batchUploadedRows: [], batchImportResult: null, batchFetchAttempted: false,
           prodFetchAttempted: false,
+          analyticsFetchedBar: false, analyticsFetchedTrend: false, analyticsFetchedChemNames: false,
         });
       });
     });
@@ -190,7 +191,7 @@ window.HomePage = (() => {
     if (_s.showAdmin && !_s.chemFetchAttempted && !_s.chemRegistryLoading) {
       _fetchChemicals();
     }
-    if (_s.showAdmin && (_s.adminTab === "batches" || _s.adminTab === "analytics") && !_s.batchFetchAttempted && !_s.batchRegistryLoading) {
+    if (_s.showAdmin && _s.adminTab === "batches" && !_s.batchFetchAttempted && !_s.batchRegistryLoading) {
       _fetchBatches();
     }
     if (_s.showAdmin && _s.adminTab === "multipliers" && !_s.multiplierFetchAttempted && !_s.multiplierRegistryLoading) {
@@ -198,6 +199,48 @@ window.HomePage = (() => {
     }
     if (_s.showAdmin && _s.adminTab === "production" && !_s.prodFetchAttempted && !_s.prodRegistryLoading) {
       _fetchProductionRecords();
+    }
+
+    // ── Analytics auto-fetch ────────────────────────────────
+    if (_s.showAdmin && _s.adminTab === "analytics") {
+      if (!_s.analyticsFetchedBar && !_s.analyticsBarLoading) {
+        _fetchAnalyticsBarData();
+      }
+      if (!_s.analyticsFetchedChemNames && !_s.analyticsChemNamesLoading) {
+        _fetchAnalyticsChemNames();
+      }
+      if (_s.analyticsSelectedChem && !_s.analyticsFetchedTrend && !_s.analyticsTrendLoading) {
+        _fetchAnalyticsTrendData();
+      }
+    }
+
+    // ── Trend chemical selector ─────────────────────────────
+    var selTrendChem = document.getElementById("sel-trend-chem");
+    if (selTrendChem) {
+      selTrendChem.addEventListener("change", function (e) {
+        H.setState({ analyticsSelectedChem: e.target.value, analyticsFetchedTrend: false, analyticsTrendData: [] });
+      });
+    }
+
+    // ── Trend range preset buttons ──────────────────────────
+    document.querySelectorAll("[data-trend-range]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        H.setState({ analyticsTrendRange: btn.dataset.trendRange, analyticsFetchedTrend: false, analyticsTrendData: [] });
+      });
+    });
+
+    // ── Trend custom date inputs ────────────────────────────
+    var trendFrom = document.getElementById("inp-trend-from");
+    if (trendFrom) {
+      trendFrom.addEventListener("change", function (e) {
+        H.setState({ analyticsTrendFrom: e.target.value, analyticsFetchedTrend: false });
+      });
+    }
+    var trendTo = document.getElementById("inp-trend-to");
+    if (trendTo) {
+      trendTo.addEventListener("change", function (e) {
+        H.setState({ analyticsTrendTo: e.target.value, analyticsFetchedTrend: false });
+      });
     }
 
     // ── Chemicals tab: drop zone ───────────────────────────────
@@ -775,6 +818,84 @@ window.HomePage = (() => {
       });
     });
 
+    // ── Multipliers tab: delete button per row ───────────────
+    document.querySelectorAll("[data-delete-multiplier]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var gsmRange = btn.dataset.deleteMultiplier;
+        var msgEl    = document.getElementById("mult-msg-" + gsmRange);
+        if (!confirm("Delete multiplier range \"" + gsmRange + "\"?")) return;
+        btn.disabled = true;
+        try {
+          var result = await window.electronAPI.multipliersDelete(gsmRange);
+          if (result.success) {
+            var reg = (H.getState().multiplierRegistry || []).filter(function (r) {
+              return r.gsm_range !== gsmRange;
+            });
+            H.setState({ multiplierRegistry: reg });
+          } else {
+            btn.disabled = false;
+            if (msgEl) { msgEl.textContent = result.message || "Delete failed."; msgEl.style.color = "#DC2626"; }
+          }
+        } catch (err) {
+          btn.disabled = false;
+          if (msgEl) { msgEl.textContent = "Error: " + err.message; msgEl.style.color = "#DC2626"; }
+        }
+      });
+    });
+
+    // ── Multipliers tab: add new range ───────────────────────
+    var addMultBtn = document.getElementById("btn-add-multiplier");
+    if (addMultBtn) {
+      addMultBtn.addEventListener("click", async function () {
+        var minEl  = document.getElementById("inp-new-mult-min");
+        var maxEl  = document.getElementById("inp-new-mult-max");
+        var wetEl  = document.getElementById("inp-new-mult-wet");
+        var dryEl  = document.getElementById("inp-new-mult-dry");
+        var msgEl  = document.getElementById("mult-add-msg");
+        var rMin = minEl ? parseFloat(minEl.value) : NaN;
+        var rMax = maxEl ? parseFloat(maxEl.value) : NaN;
+        var wet  = wetEl ? parseFloat(wetEl.value) : NaN;
+        var dry  = dryEl ? parseFloat(dryEl.value) : NaN;
+        if (isNaN(rMin) || isNaN(rMax) || rMax <= rMin) {
+          if (msgEl) { msgEl.textContent = "Range min must be less than max."; msgEl.style.color = "#DC2626"; }
+          return;
+        }
+        if (isNaN(wet) || wet <= 0 || isNaN(dry) || dry <= 0) {
+          if (msgEl) { msgEl.textContent = "Enter valid positive multiplier values."; msgEl.style.color = "#DC2626"; }
+          return;
+        }
+        var gsmRange = Math.round(rMin) + "-" + Math.round(rMax);
+        var sortOrder = (H.getState().multiplierRegistry || []).length + 1;
+        addMultBtn.disabled = true;
+        addMultBtn.textContent = "Adding\u2026";
+        try {
+          var result = await window.electronAPI.multipliersAdd(gsmRange, rMin, rMax, wet, dry, sortOrder);
+          if (result.success) {
+            // Refresh the full list from DB to get correct sort order
+            var listRes = await window.electronAPI.multipliersList();
+            if (listRes.success) {
+              H.setState({ multiplierRegistry: listRes.data });
+            } else {
+              // Fallback: add locally
+              var reg = (H.getState().multiplierRegistry || []).concat([{
+                gsm_range: gsmRange, range_min: rMin, range_max: rMax,
+                wet_multiplier: wet, dry_multiplier: dry, sort_order: sortOrder
+              }]);
+              H.setState({ multiplierRegistry: reg });
+            }
+          } else {
+            addMultBtn.disabled = false;
+            addMultBtn.textContent = "+ Add Range";
+            if (msgEl) { msgEl.textContent = result.message || "Add failed."; msgEl.style.color = "#DC2626"; }
+          }
+        } catch (err) {
+          addMultBtn.disabled = false;
+          addMultBtn.textContent = "+ Add Range";
+          if (msgEl) { msgEl.textContent = "Error: " + err.message; msgEl.style.color = "#DC2626"; }
+        }
+      });
+    }
+
     // ── Live input binding (no re-render) ────────────────────
     _attachInputListeners();
 
@@ -885,8 +1006,20 @@ window.HomePage = (() => {
       var gsmVal = parseFloat(s.gsm);
       if (!s.gsm || gsmVal <= 0) {
         errors.gsm = "Must be a positive number";
-      } else if (!(gsmVal > 100 && gsmVal <= 120) && !(gsmVal > 120 && gsmVal <= 140) && !(gsmVal > 140 && gsmVal <= 160) && !(gsmVal > 160 && gsmVal <= 180) && !(gsmVal > 180 && gsmVal <= 200)) {
-        errors.gsm = "GSM must be in range: 100-120, 120-140, 140-160, 160-180, or 180-200";
+      } else if (gsmVal <= 100 || gsmVal > 400) {
+        errors.gsm = "GSM must be between 100 and 400";
+      } else {
+        // Validate GSM falls within a defined multiplier range
+        var multReg = s.multiplierRegistry || [];
+        var gsmInRange = false;
+        for (var mi = 0; mi < multReg.length; mi++) {
+          var rMin = parseFloat(multReg[mi].range_min);
+          var rMax = parseFloat(multReg[mi].range_max);
+          if (gsmVal > rMin && gsmVal <= rMax) { gsmInRange = true; break; }
+        }
+        if (!gsmInRange && multReg.length > 0) {
+          errors.gsm = "GSM " + gsmVal + " does not match any defined multiplier range";
+        }
       }
       if (!s.width || parseFloat(s.width) <= 0) errors.width = "Must be a positive number";
       if (!s.length || parseFloat(s.length) <= 0) errors.length = "Must be a positive number";
@@ -914,10 +1047,10 @@ window.HomePage = (() => {
           var b = result.data;
           // Validate GSM from DB
           var dbGsm = parseFloat(b.gsm) || 0;
-          if (!(dbGsm > 100 && dbGsm <= 120) && !(dbGsm > 120 && dbGsm <= 140) && !(dbGsm > 140 && dbGsm <= 160) && !(dbGsm > 160 && dbGsm <= 180) && !(dbGsm > 180 && dbGsm <= 200)) {
+          if (dbGsm <= 100 || dbGsm > 400) {
             H.setState({
               fetchingBatch: false,
-              errors: { batchNumber: "Batch GSM (" + b.gsm + ") is outside valid ranges (100-200)" }
+              errors: { batchNumber: "Batch GSM (" + b.gsm + ") is outside valid ranges (100-400)" }
             });
             return;
           }
@@ -1125,6 +1258,84 @@ window.HomePage = (() => {
       .catch(function (err) {
         H.setState({ prodRegistryLoading: false });
         console.error("[HomePage] production:list error:", err.message);
+      });
+  }
+
+  // ── Analytics data fetchers ─────────────────────────────────────────
+  function _fetchAnalyticsBarData() {
+    var s = H.getState();
+    var dateFrom, dateTo;
+    if (s.adminDateMode === "single") {
+      dateFrom = s.adminSingleDate;
+      dateTo = s.adminSingleDate;
+    } else {
+      dateFrom = s.adminDateFrom;
+      dateTo = s.adminDateTo;
+    }
+    H.setState({ analyticsBarLoading: true, analyticsFetchedBar: true });
+    window.electronAPI.analyticsDailyUsage(dateFrom, dateTo)
+      .then(function (result) {
+        if (result.success) {
+          H.setState({ analyticsBarData: result.data, analyticsBarLoading: false });
+        } else {
+          H.setState({ analyticsBarData: [], analyticsBarLoading: false });
+          console.warn("[HomePage] analytics:daily-usage failed:", result.message);
+        }
+      })
+      .catch(function (err) {
+        H.setState({ analyticsBarData: [], analyticsBarLoading: false });
+        console.error("[HomePage] analytics:daily-usage error:", err.message);
+      });
+  }
+
+  function _fetchAnalyticsChemNames() {
+    H.setState({ analyticsChemNamesLoading: true, analyticsFetchedChemNames: true });
+    window.electronAPI.analyticsChemicalNames()
+      .then(function (result) {
+        if (result.success) {
+          H.setState({ analyticsChemNames: result.data, analyticsChemNamesLoading: false });
+        } else {
+          H.setState({ analyticsChemNames: [], analyticsChemNamesLoading: false });
+          console.warn("[HomePage] analytics:chemical-names failed:", result.message);
+        }
+      })
+      .catch(function (err) {
+        H.setState({ analyticsChemNames: [], analyticsChemNamesLoading: false });
+        console.error("[HomePage] analytics:chemical-names error:", err.message);
+      });
+  }
+
+  function _fetchAnalyticsTrendData() {
+    var s = H.getState();
+    var chemName = s.analyticsSelectedChem;
+    if (!chemName) return;
+    var dateFrom, dateTo;
+    if (s.analyticsTrendRange === "custom") {
+      dateFrom = s.analyticsTrendFrom;
+      dateTo = s.analyticsTrendTo;
+    } else {
+      dateTo = H.todayISO();
+      if (s.analyticsTrendRange === "month") {
+        dateFrom = H.daysAgoISO(29);
+      } else if (s.analyticsTrendRange === "3month") {
+        dateFrom = H.daysAgoISO(89);
+      } else {
+        dateFrom = H.daysAgoISO(6);
+      }
+    }
+    H.setState({ analyticsTrendLoading: true, analyticsFetchedTrend: true });
+    window.electronAPI.analyticsChemicalTrend(chemName, dateFrom, dateTo)
+      .then(function (result) {
+        if (result.success) {
+          H.setState({ analyticsTrendData: result.data, analyticsTrendLoading: false });
+        } else {
+          H.setState({ analyticsTrendData: [], analyticsTrendLoading: false });
+          console.warn("[HomePage] analytics:chemical-trend failed:", result.message);
+        }
+      })
+      .catch(function (err) {
+        H.setState({ analyticsTrendData: [], analyticsTrendLoading: false });
+        console.error("[HomePage] analytics:chemical-trend error:", err.message);
       });
   }
 

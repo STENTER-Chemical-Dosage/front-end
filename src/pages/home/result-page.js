@@ -2,11 +2,12 @@
  * src/pages/home/result-page.js — Page 3: Calculation Result
  *
  * Implements the STENTER Recipe Calculation Algorithm:
- *   Step 1 – Inputs: GSM (A), Width (B), Length (C), Chemicals (name, density in g/L)
+ *   Step 1 – Inputs: GSM (A), Width (B), Length (C), Weight (W), Chemicals (name, density in g/L)
  *   Step 2 – Fabric Factor: D = B × C
- *   Step 3 – GSM Range Multiplier (strict ranges)
+ *   Step 3 – GSM Range Multiplier (strict ranges, supports GSM 100–400)
  *   Step 4 – Total Bath: total_bath = D × multiplier
- *   Step 5 – T Value: T = ceil(total_bath / 25) × 25  (ceiling 25 multiple)
+ *   Step 5 – T Value: If weight < 100 kg → T = 100 L (fixed).
+ *            Otherwise T = ceil(total_bath / 25) × 25, minimum 100 L.
  *   Step 6 – Bath Concentration: bath_concentration = T × 0.01
  *   Step 7 – Chemical Dosage: dosage = bath_concentration × density
  *
@@ -23,13 +24,7 @@
   function _getGsmMultiplier(gsm, wetDry, multiplierRegistry) {
     var reg = multiplierRegistry && multiplierRegistry.length > 0
       ? multiplierRegistry
-      : [
-          { range_min: 100, range_max: 120, wet_multiplier: 1.2, dry_multiplier: 1.2 },
-          { range_min: 120, range_max: 140, wet_multiplier: 1.4, dry_multiplier: 1.4 },
-          { range_min: 140, range_max: 160, wet_multiplier: 1.6, dry_multiplier: 1.6 },
-          { range_min: 160, range_max: 180, wet_multiplier: 1.8, dry_multiplier: 1.8 },
-          { range_min: 180, range_max: 200, wet_multiplier: 2.0, dry_multiplier: 2.0 },
-        ];
+      : [];
     for (var i = 0; i < reg.length; i++) {
       var r     = reg[i];
       var rMin  = parseFloat(r.range_min);
@@ -52,6 +47,7 @@
     var A = parseFloat(s.gsm) || 0;       // GSM
     var B = parseFloat(s.width) || 0;     // Width (cm)
     var C = parseFloat(s.length) || 0;    // Length (m)
+    var W = parseFloat(s.clothWeight) || 0; // Cloth Weight (kg)
     var chemicals = s.chemicals && s.chemicals.length > 0
       ? s.chemicals
       : [{ name: "Standard Mix", density: 10 }];
@@ -67,8 +63,16 @@
     // ── Step 4: Total Bath ────────────────────────────────────────────────────
     var totalBath = D * multiplier;
 
-    // ── Step 5: T Value (round up to ceiling 25 multiple) ────────────────
-    var T = Math.ceil(totalBath / 25) * 25;
+    // ── Step 5: T Value ───────────────────────────────────────────────────────
+    // If cloth weight < 100 kg, T is fixed at 100 L (minimum bath).
+    // Otherwise, round up to ceiling 25 multiple, but never below 100 L.
+    var T;
+    if (W < 100) {
+      T = 100;
+    } else {
+      T = Math.ceil(totalBath / 25) * 25;
+      if (T < 100) T = 100; // minimum T value is 100 L
+    }
 
     // ── Step 6: Bath Concentration ────────────────────────────────────────────
     var bathConcentration = T * 0.01;
@@ -129,14 +133,33 @@
       );
     }
 
+    // Helper: format multiplier to show full precision (3-6 decimal digits)
+    function fmtMult(val) {
+      var n = parseFloat(val);
+      if (isNaN(n)) return '0';
+      var s6 = n.toFixed(6);
+      var parts = s6.split('.');
+      var dec = parts[1] || '000000';
+      var minDec = dec.substring(0, 3);
+      var rest = dec.substring(3).replace(/0+$/, '');
+      return parts[0] + '.' + minDec + rest;
+    }
+
+    var tValueNote = W < 100
+      ? "T Value (weight &lt; 100 kg &rarr; fixed 100 L)"
+      : (Math.ceil(totalBath / 25) * 25 < 100
+          ? "T Value (min 100 L applied)"
+          : "T Value (ceil to 25)");
+
     var calcSection =
       '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:10px;padding:16px 20px;margin-bottom:20px">' +
       '<div style="font-size:11px;font-weight:700;color:#A0ACAB;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px">Calculation Breakdown</div>' +
+      calcRow("Cloth Weight", W.toLocaleString() + " kg") +
       calcRow("Fabric Factor (Width &times; Length)", D.toLocaleString() + " cm&middot;m") +
       calcRow("GSM Range", gsmRange) +
-      calcRow("Multiplier", "&times; " + multiplier) +
+      calcRow("Multiplier", "&times; " + fmtMult(multiplier)) +
       calcRow("Total Bath (D &times; Multiplier)", totalBath.toLocaleString()) +
-      calcRow("T Value (ceil to 25)", T.toLocaleString()) +
+      calcRow(tValueNote, T.toLocaleString()) +
       calcRow("Bath Concentration (T &times; 0.01)", bathConcentration.toFixed(2), true) +
       "</div>";
 
@@ -216,7 +239,8 @@
         '<div style="font-size:13px;color:' + H.ACCENT + ';margin-top:6px;opacity:0.75">' +
           "Bath Concentration: " + bathConcentration.toFixed(2) +
           " &middot; GSM " + gsmRange +
-          " &middot; Multiplier &times;" + multiplier +
+          " &middot; Multiplier &times;" + fmtMult(multiplier) +
+          " &middot; Weight " + W.toLocaleString() + " kg" +
         "</div>" +
       "</div>" +
 
