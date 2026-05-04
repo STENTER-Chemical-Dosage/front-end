@@ -138,6 +138,7 @@
       .map(function (c) {
         return (
           "<tr>" +
+          '<td style="padding:10px 14px;font-size:14px;font-family:\'IBM Plex Mono\',monospace;color:' + H.TEXT + ';border-bottom:1px solid ' + H.BORDER + '">' + H.escape(c.chemical_id || "") + "</td>" +
           '<td style="padding:10px 14px;font-size:14px;color:' + H.TEXT + ';border-bottom:1px solid ' + H.BORDER + '">' + H.escape(c.name) + "</td>" +
           '<td style="padding:10px 14px;font-size:14px;border-bottom:1px solid ' + H.BORDER + '">' +
             '<span style="background:' + H.ACCENT_LIGHT + ';color:' + H.ACCENT + ';font-size:12px;font-weight:600;padding:3px 8px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">' +
@@ -156,6 +157,7 @@
       "</div>" +
       '<table style="width:100%;border-collapse:collapse">' +
       '<thead><tr style="background:' + H.BG + '">' +
+      '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Chemical ID</th>' +
       '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Chemical Name</th>' +
       '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Density (g/L)</th>' +
       '<th style="padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:' + H.MUTED + ';border-bottom:1px solid ' + H.BORDER + '">Dosage</th>' +

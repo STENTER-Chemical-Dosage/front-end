@@ -995,6 +995,7 @@ window.HomePage = (() => {
 
     // ── Live input binding (no re-render) ────────────────────
     _attachInputListeners();
+    _attachChemicalPicker();
 
     // ── Button hover effects ─────────────────────────────────
     _attachHoverEffects();
@@ -1010,7 +1011,7 @@ window.HomePage = (() => {
       { id: "inp-width",        key: "width" },
       { id: "inp-length",       key: "length" },
       { id: "inp-weight",       key: "clothWeight" },
-      { id: "inp-chem-select",     key: "selectedChemical", event: "change" },
+      { id: "inp-chem-select",  key: "selectedChemicalId", event: "change" },
       { id: "inp-chem-density",  key: "chemicalDensity" },
     ];
 
@@ -1021,6 +1022,92 @@ window.HomePage = (() => {
           H.getState()[b.key] = e.target.value;
         });
       }
+    });
+  }
+
+  function _attachChemicalPicker() {
+    var combo = document.getElementById("chem-combobox");
+    var input = document.getElementById("inp-chem-search");
+    var hidden = document.getElementById("inp-chem-select");
+    var menu = document.getElementById("chem-picker-menu");
+    var toggle = document.getElementById("btn-chem-picker-toggle");
+    if (!combo || !input || !hidden || !menu) return;
+
+    function openMenu() {
+      menu.style.display = "block";
+      _filterChemicalOptions(input.value);
+    }
+
+    function closeMenu() {
+      menu.style.display = "none";
+    }
+
+    function _filterChemicalOptions(query) {
+      var q = String(query || "").trim().toLowerCase();
+      var visible = 0;
+      menu.querySelectorAll("[data-chem-option]").forEach(function (option) {
+        var searchText = option.dataset.search || "";
+        var match = !q || searchText.indexOf(q) !== -1;
+        option.style.display = match ? "flex" : "none";
+        if (match) visible++;
+      });
+      var empty = document.getElementById("chem-picker-empty");
+      if (empty && menu.querySelector("[data-chem-option]")) {
+        empty.style.display = visible ? "none" : "block";
+      }
+    }
+
+    input.addEventListener("focus", openMenu);
+    input.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openMenu();
+    });
+    input.addEventListener("input", function (e) {
+      var s = H.getState();
+      s.chemicalSearch = e.target.value;
+      s.selectedChemicalId = "";
+      s.selectedChemical = "";
+      hidden.value = "";
+      openMenu();
+    });
+
+    if (toggle) {
+      toggle.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (menu.style.display === "block") {
+          closeMenu();
+        } else {
+          input.focus();
+          openMenu();
+        }
+      });
+    }
+
+    menu.querySelectorAll("[data-chem-option]").forEach(function (option) {
+      option.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+      });
+      option.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var id = option.dataset.chemId || "";
+        var name = option.dataset.chemName || "";
+        H.getState().selectedChemicalId = id;
+        H.getState().selectedChemical = name;
+        H.getState().chemicalSearch = "";
+        hidden.value = id;
+        input.value = id + " - " + name;
+        closeMenu();
+      });
+      option.addEventListener("mouseenter", function () {
+        option.style.background = H.ACCENT_LIGHT;
+      });
+      option.addEventListener("mouseleave", function () {
+        option.style.background = String(H.getState().selectedChemicalId || "") === String(option.dataset.chemId || "")
+          ? H.ACCENT_LIGHT
+          : H.CARD;
+      });
     });
   }
 
@@ -1067,6 +1154,11 @@ window.HomePage = (() => {
         H.setState({ dropdownOpen: false });
       }
     }
+    var chemCombo = document.getElementById("chem-combobox");
+    var chemMenu = document.getElementById("chem-picker-menu");
+    if (chemCombo && chemMenu && !chemCombo.contains(e.target)) {
+      chemMenu.style.display = "none";
+    }
   }
 
   // ── Sync input values from DOM into state ──────────────────────────────────
@@ -1079,7 +1171,8 @@ window.HomePage = (() => {
       { id: "inp-width",        key: "width" },
       { id: "inp-length",       key: "length" },
       { id: "inp-weight",       key: "clothWeight" },
-      { id: "inp-chem-select",     key: "selectedChemical" },
+      { id: "inp-chem-select",  key: "selectedChemicalId" },
+      { id: "inp-chem-search",  key: "chemicalSearch" },
       { id: "inp-chem-density",  key: "chemicalDensity" },
     ];
     fields.forEach(function (f) {
@@ -1181,11 +1274,49 @@ window.HomePage = (() => {
     H.setState({ errors: {}, page: 2 });
   }
 
+  function _findChemicalSelection() {
+    var s = H.getState();
+    var registry = s.chemRegistry || [];
+    var selectedId = String(s.selectedChemicalId || "").trim();
+    var typed = String(s.chemicalSearch || "").trim().toLowerCase();
+    var matches = [];
+
+    if (selectedId) {
+      for (var i = 0; i < registry.length; i++) {
+        if (String(registry[i].chemical_id || "") === selectedId) return registry[i];
+      }
+    }
+
+    if (!typed) return null;
+
+    for (var j = 0; j < registry.length; j++) {
+      var id = String(registry[j].chemical_id || "");
+      var name = String(registry[j].chemical_name || "");
+      var label = (id + " - " + name).toLowerCase();
+      if (typed === id.toLowerCase() || typed === name.toLowerCase() || typed === label) {
+        return registry[j];
+      }
+      if ((id + " " + name).toLowerCase().indexOf(typed) !== -1) {
+        matches.push(registry[j]);
+      }
+    }
+
+    return matches.length === 1 ? matches[0] : null;
+  }
+
   // ── Add chemical handler ───────────────────────────────────────────────────
   function _handleAddChemical() {
     _syncInputState();
 
     var s = H.getState();
+    var selectedChem = _findChemicalSelection();
+    if (!selectedChem) {
+      var selectErrors = Object.assign({}, s.errors || {});
+      selectErrors.chemicals = "Select a chemical by ID or name from the list";
+      H.setState({ errors: selectErrors });
+      return;
+    }
+
     var density = parseFloat(s.chemicalDensity);
     if (!density || density <= 0) {
       var newErrors = Object.assign({}, s.errors || {});
@@ -1195,8 +1326,19 @@ window.HomePage = (() => {
     }
 
     var chemicals = s.chemicals.slice();
-    chemicals.push({ name: s.selectedChemical, density: density });
-    H.setState({ chemicals: chemicals, chemicalDensity: "", errors: {} });
+    chemicals.push({
+      chemical_id: selectedChem.chemical_id || "",
+      name: selectedChem.chemical_name || "",
+      density: density,
+    });
+    H.setState({
+      chemicals: chemicals,
+      selectedChemicalId: "",
+      selectedChemical: "",
+      chemicalSearch: "",
+      chemicalDensity: "",
+      errors: {},
+    });
   }
 
   // ── Reset everything and go back to Page 1 ────────────────────────────────

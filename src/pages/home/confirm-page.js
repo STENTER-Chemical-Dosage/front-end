@@ -37,7 +37,8 @@
     if (s.chemicals.length > 0) {
       chemDisplay = s.chemicals
         .map(function (c) {
-          return H.escape(c.name) + " (" + c.density + " g/L)";
+          var label = c.chemical_id ? c.chemical_id + " - " + c.name : c.name;
+          return H.escape(label) + " (" + c.density + " g/L)";
         })
         .join(", ");
     }
