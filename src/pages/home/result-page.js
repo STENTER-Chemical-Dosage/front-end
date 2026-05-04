@@ -8,7 +8,7 @@
  *   Step 4 – Total Bath: total_bath = D × multiplier
  *   Step 5 – T Value: If weight < 100 kg → T = 100 L (fixed).
  *            Otherwise T = ceil(total_bath / 25) × 25, minimum 100 L.
- *   Step 6 – Bath Concentration: bath_concentration = T × 0.01
+ *   Step 6 – Bath Concentration: bath_concentration = T × 0.001
  *   Step 7 – Chemical Dosage: dosage = bath_concentration × density
  *
  * Depends on: HomeApp (constants.js), HomeApp.icons, HomeApp.styles, HomeApp.renderNavbar
@@ -75,7 +75,7 @@
     }
 
     // ── Step 6: Bath Concentration ────────────────────────────────────────────
-    var bathConcentration = T * 0.01;
+    var bathConcentration = T * 0.001;
 
     // ── Step 7: Chemical Dosages ──────────────────────────────────────────────
     var chemDosages = chemicals.map(function (c) {
@@ -121,18 +121,6 @@
       summaryRows +
       "</div>";
 
-    // ── Calculation Breakdown Card ────────────────────────────────────────────
-    function calcRow(label, value, highlight) {
-      var valStyle = "font-size:14px;font-family:'IBM Plex Mono',monospace;font-weight:" + (highlight ? "700" : "600") +
-        ";color:" + (highlight ? H.ACCENT : H.TEXT);
-      return (
-        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid ' + H.BORDER + '">' +
-        '<span style="font-size:13px;color:' + H.MUTED + '">' + label + "</span>" +
-        '<span style="' + valStyle + '">' + value + "</span>" +
-        "</div>"
-      );
-    }
-
     // Helper: format multiplier to show full precision (3-6 decimal digits)
     function fmtMult(val) {
       var n = parseFloat(val);
@@ -144,24 +132,6 @@
       var rest = dec.substring(3).replace(/0+$/, '');
       return parts[0] + '.' + minDec + rest;
     }
-
-    var tValueNote = W < 100
-      ? "T Value (weight &lt; 100 kg &rarr; fixed 100 L)"
-      : (Math.ceil(totalBath / 25) * 25 < 100
-          ? "T Value (min 100 L applied)"
-          : "T Value (ceil to 25)");
-
-    var calcSection =
-      '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:10px;padding:16px 20px;margin-bottom:20px">' +
-      '<div style="font-size:11px;font-weight:700;color:#A0ACAB;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px">Calculation Breakdown</div>' +
-      calcRow("Cloth Weight", W.toLocaleString() + " kg") +
-      calcRow("Fabric Factor (Width &times; Length)", D.toLocaleString() + " cm&middot;m") +
-      calcRow("GSM Range", gsmRange) +
-      calcRow("Multiplier", "&times; " + fmtMult(multiplier)) +
-      calcRow("Total Bath (D &times; Multiplier)", totalBath.toLocaleString()) +
-      calcRow(tValueNote, T.toLocaleString()) +
-      calcRow("Bath Concentration (T &times; 0.01)", bathConcentration.toFixed(2), true) +
-      "</div>";
 
     // ── Chemical Dosage Table ─────────────────────────────────────────────────
     var rows = chemDosages
@@ -227,7 +197,6 @@
       "</div>" +
 
       summarySection +
-      calcSection +
 
       // Result highlight card
       '<div style="background:' + H.ACCENT_LIGHT + ";border:2px solid " + H.ACCENT +

@@ -32,7 +32,7 @@ const bcrypt      = require("bcryptjs");
 //   database: "postgres",
 //   ssl     : { rejectUnauthorized: false }, // required for Supabase hosted Postgres
 // });
-
+//postgresql://postgres:[YOUR-PASSWORD]@db.svetohbyasqzinlzvvky.supabase.co:5432/postgres
 const pool = new Pool({
   user    : "postgres.svetohbyasqzinlzvvky",
   password: "stenterchemical;dosage",
@@ -53,6 +53,13 @@ pool.on("error", (err) => {
  * initDB — Creates the users table if it doesn't already exist.
  * Must be awaited before the first auth query hits the database.
  */
+function normalizeUuid(value) {
+  const text = String(value || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
+    ? text
+    : null;
+}
+
 async function initDB() {
   const client = await pool.connect();
   try {
@@ -112,7 +119,7 @@ async function initDB() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS production_records (
         id                SERIAL      PRIMARY KEY,
-        user_id           UUID        NOT NULL,
+        user_id           UUID,
         batch_id          TEXT,
         schedule_date     TEXT,
         stenter           TEXT,
@@ -129,6 +136,16 @@ async function initDB() {
         bath_concentration NUMERIC,
         submitted_at      TIMESTAMPTZ DEFAULT NOW()
       )
+    `);
+
+    await client.query(`
+      ALTER TABLE production_records
+      ADD COLUMN IF NOT EXISTS user_id UUID
+    `);
+
+    await client.query(`
+      ALTER TABLE production_records
+      ALTER COLUMN user_id DROP NOT NULL
     `);
 
     await client.query(`
@@ -665,6 +682,7 @@ ipcMain.handle("production:submit", async (_event, { record }) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const userId = normalizeUuid(record.user_id);
 
     const { rows } = await client.query(
       `INSERT INTO production_records
@@ -673,7 +691,7 @@ ipcMain.handle("production:submit", async (_event, { record }) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING id`,
       [
-        record.user_id,
+        userId,
         record.batch_id || null,
         record.schedule_date || null,
         record.stenter || null,
@@ -702,7 +720,7 @@ ipcMain.handle("production:submit", async (_event, { record }) => {
     }
 
     await client.query("COMMIT");
-    console.log("[DB] Production record saved — id:", recordId, "user:", record.user_id);
+    console.log("[DB] Production record saved — id:", recordId, "user:", userId || "anonymous");
     return { success: true, data: { id: recordId } };
   } catch (err) {
     await client.query("ROLLBACK");

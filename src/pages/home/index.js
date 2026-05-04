@@ -1,4 +1,4 @@
-/**
+﻿/**
  * src/pages/home/index.js — LiqCalc Home Page Orchestrator
  *
  * Wires together all home sub-modules (constants, icons, styles, navbar,
@@ -23,6 +23,104 @@
 
 window.HomePage = (() => {
   var H = window.HomeApp;
+
+  // ── Custom Confirm Dialog (replaces window.confirm to avoid Electron focus bug) ──
+  function _showConfirmDialog(title, message, confirmLabel, danger) {
+    return new Promise(function (resolve) {
+      var overlay = document.createElement("div");
+      overlay.style.cssText =
+        "position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;" +
+        "align-items:center;justify-content:center;z-index:9999";
+
+      var btnColor  = danger ? "#DC2626" : H.ACCENT;
+      var btnHover  = danger ? "#B91C1C" : H.ACCENT_HOVER;
+      var safeMsg   = H.escape(message);
+
+      overlay.innerHTML =
+        '<div style="background:' + H.CARD + ';border-radius:12px;padding:28px 28px 24px;' +
+        'width:380px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.18)">' +
+        '<h2 style="margin:0 0 8px;font-family:\'IBM Plex Sans\',sans-serif;font-size:17px;font-weight:700;color:' + H.TEXT + '">' + H.escape(title) + '</h2>' +
+        '<p style="margin:0 0 24px;font-family:\'IBM Plex Sans\',sans-serif;font-size:13px;color:' + H.MUTED + ';line-height:1.6">' + safeMsg + '</p>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+        '<button id="_cd-cancel" style="height:38px;padding:0 18px;border:1.5px solid ' + H.BORDER + ';background:transparent;border-radius:8px;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif;font-size:13px;font-weight:600;color:' + H.TEXT + '">Cancel</button>' +
+        '<button id="_cd-confirm" style="height:38px;padding:0 18px;border:none;background:' + btnColor + ';color:#fff;border-radius:8px;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif;font-size:13px;font-weight:600">' + H.escape(confirmLabel || "Confirm") + '</button>' +
+        '</div></div>';
+
+      document.body.appendChild(overlay);
+
+      function _close(result) {
+        if (document.body.contains(overlay)) document.body.removeChild(overlay);
+        resolve(result);
+      }
+
+      var cancelBtn  = overlay.querySelector("#_cd-cancel");
+      var confirmBtn = overlay.querySelector("#_cd-confirm");
+
+      cancelBtn.addEventListener("click",  function () { _close(false); });
+      confirmBtn.addEventListener("click", function () { _close(true); });
+      confirmBtn.addEventListener("mouseenter", function () { confirmBtn.style.background = btnHover; });
+      confirmBtn.addEventListener("mouseleave", function () { confirmBtn.style.background = btnColor; });
+      overlay.addEventListener("click", function (e) { if (e.target === overlay) _close(false); });
+      confirmBtn.focus();
+    });
+  }
+
+  // ── Admin Password Modal ───────────────────────────────────────────────────
+  function _showAdminPasswordModal() {
+    var overlay = document.createElement("div");
+    overlay.id = "admin-pwd-overlay";
+    overlay.style.cssText =
+      "position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;" +
+      "align-items:center;justify-content:center;z-index:9999";
+
+    overlay.innerHTML =
+      '<div style="background:' + H.CARD + ';border-radius:12px;padding:32px 28px;' +
+      'width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.18)">' +
+      '<h2 style="margin:0 0 6px;font-family:\'IBM Plex Sans\',sans-serif;font-size:20px;color:' + H.TEXT + '">Admin Access</h2>' +
+      '<p style="margin:0 0 20px;font-family:\'IBM Plex Sans\',sans-serif;font-size:14px;color:' + H.MUTED + '">Enter the admin password to continue.</p>' +
+      '<div id="admin-pwd-error" style="display:none;font-family:\'IBM Plex Sans\',sans-serif;font-size:13px;color:' + H.DANGER + ';margin-bottom:12px"></div>' +
+      '<input id="admin-pwd-input" type="password" placeholder="Password"' +
+      ' style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid ' + H.BORDER + ';border-radius:8px;' +
+      'font-size:14px;font-family:\'IBM Plex Sans\',sans-serif;outline:none;margin-bottom:16px" />' +
+      '<div style="display:flex;gap:10px">' +
+      '<button id="admin-pwd-cancel" style="flex:1;padding:10px;border:1px solid ' + H.BORDER + ';background:none;' +
+      'border-radius:8px;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif;font-size:14px;color:' + H.TEXT + '">Cancel</button>' +
+      '<button id="admin-pwd-submit" style="flex:1;padding:10px;border:none;background:' + H.ACCENT + ';color:#fff;' +
+      'border-radius:8px;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif;font-size:14px">Enter</button>' +
+      '</div>' +
+      '</div>';
+
+    document.body.appendChild(overlay);
+
+    var input = document.getElementById("admin-pwd-input");
+    var errorEl = document.getElementById("admin-pwd-error");
+    input.focus();
+
+    function _closeModal() {
+      if (document.body.contains(overlay)) document.body.removeChild(overlay);
+    }
+
+    function _trySubmit() {
+      if (input.value === H.ADMIN_PASSWORD) {
+        _closeModal();
+        H.setState({ showAdmin: true });
+      } else {
+        errorEl.textContent = "Incorrect password. Please try again.";
+        errorEl.style.display = "block";
+        input.value = "";
+        input.focus();
+      }
+    }
+
+    document.getElementById("admin-pwd-cancel").addEventListener("click", _closeModal);
+    document.getElementById("admin-pwd-submit").addEventListener("click", _trySubmit);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") _trySubmit();
+    });
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) _closeModal();
+    });
+  }
 
   // ── Main Render ────────────────────────────────────────────────────────────
   function _render() {
@@ -68,10 +166,11 @@ window.HomePage = (() => {
       btn.addEventListener("click", function () {
         var action = btn.dataset.action;
         if (action === "admin") {
-          H.setState({ showAdmin: true, dropdownOpen: false });
+          H.setState({ dropdownOpen: false });
+          _showAdminPasswordModal();
         } else if (action === "signout") {
           AuthGuard.clearSession();
-          Router.navigate("login");
+          Router.navigate("home");
         } else {
           H.setState({ dropdownOpen: false });
         }
@@ -243,64 +342,42 @@ window.HomePage = (() => {
       });
     }
 
-    // ── Chemicals tab: drop zone ───────────────────────────────
-    var dropzone = document.getElementById("chem-dropzone");
-    if (dropzone) {
-      dropzone.addEventListener("dragover", function (e) {
-        e.preventDefault();
-        dropzone.style.borderColor = H.ACCENT;
-        dropzone.style.background = H.ACCENT_LIGHT;
-      });
-      dropzone.addEventListener("dragleave", function () {
-        dropzone.style.borderColor = H.BORDER;
-        dropzone.style.background = "#FAFBFC";
-      });
-      dropzone.addEventListener("drop", function (e) {
-        e.preventDefault();
-        dropzone.style.borderColor = H.BORDER;
-        dropzone.style.background = "#FAFBFC";
-        _parseChemFile(e.dataTransfer.files[0]);
-      });
-      dropzone.addEventListener("click", function () {
-        var fi = document.getElementById("chem-file-input");
-        if (fi && H.getState().uploadState !== "parsing") fi.click();
-      });
-    }
-
-    var chemFileInput = document.getElementById("chem-file-input");
-    if (chemFileInput) {
-      chemFileInput.addEventListener("change", function (e) {
-        _parseChemFile(e.target.files[0]);
-        e.target.value = ""; // reset so same file can be re-selected
-      });
-    }
-
-    // ── Chemicals tab: confirm / discard import ───────────────────
-    var confirmImport = document.getElementById("btn-chem-confirm-import");
-    if (confirmImport) {
-      confirmImport.addEventListener("click", async function () {
-        var rows = H.getState().uploadedRows || [];
-        H.setState({ uploadState: "importing", uploadedRows: [] });
+    // ── Chemicals tab: add chemical form ─────────────────────────
+    var addChemBtn = document.getElementById("btn-chem-add");
+    var newChemError = document.getElementById("new-chem-error");
+    if (addChemBtn) {
+      addChemBtn.addEventListener("mouseenter", function () { addChemBtn.style.background = H.ACCENT_HOVER; });
+      addChemBtn.addEventListener("mouseleave", function () { addChemBtn.style.background = H.ACCENT; });
+      addChemBtn.addEventListener("click", async function () {
+        var idInput   = document.getElementById("inp-new-chem-id");
+        var nameInput = document.getElementById("inp-new-chem-name");
+        var chemId    = idInput   ? idInput.value.trim()   : "";
+        var chemName  = nameInput ? nameInput.value.trim() : "";
+        if (newChemError) { newChemError.style.display = "none"; newChemError.textContent = ""; }
+        if (!chemId || !chemName) {
+          if (newChemError) { newChemError.textContent = "Both Chemical ID and Chemical Name are required."; newChemError.style.display = "block"; }
+          return;
+        }
+        addChemBtn.disabled = true;
+        addChemBtn.textContent = "Adding\u2026";
         try {
-          var result = await window.electronAPI.chemicalsImport(rows);
+          var result = await window.electronAPI.chemicalsImport([{ chemical_id: chemId, chemical_name: chemName, unit: "g/L" }]);
           if (result.success) {
-            H.setState({ uploadState: "done", importResult: result.data });
-            _fetchChemicals(); // refresh the registry from DB
+            if (result.data.skipped && result.data.skipped.length > 0) {
+              if (newChemError) { newChemError.textContent = 'A chemical with ID \"' + chemId + '\" already exists. Please use a different ID.'; newChemError.style.display = "block"; }
+            } else {
+              if (idInput)   idInput.value   = "";
+              if (nameInput) nameInput.value = "";
+              _fetchChemicals();
+            }
           } else {
-            H.setState({ uploadState: "error", uploadMsg: result.message || "Import failed." });
+            if (newChemError) { newChemError.textContent = result.message || "Failed to add chemical."; newChemError.style.display = "block"; }
           }
         } catch (err) {
-          H.setState({ uploadState: "error", uploadMsg: "Import error: " + err.message });
+          if (newChemError) { newChemError.textContent = "Error: " + err.message; newChemError.style.display = "block"; }
         }
-      });
-      confirmImport.addEventListener("mouseenter", function () { confirmImport.style.background = H.ACCENT_HOVER; });
-      confirmImport.addEventListener("mouseleave", function () { confirmImport.style.background = H.ACCENT; });
-    }
-
-    var discardImport = document.getElementById("btn-chem-discard-import");
-    if (discardImport) {
-      discardImport.addEventListener("click", function () {
-        H.setState({ uploadState: "idle", uploadMsg: "", uploadedRows: [] });
+        addChemBtn.disabled = false;
+        addChemBtn.textContent = "+ Add Chemical";
       });
     }
 
@@ -308,7 +385,12 @@ window.HomePage = (() => {
     document.querySelectorAll("[data-chem-remove]").forEach(function (btn) {
       btn.addEventListener("click", async function () {
         var chemId = btn.dataset.chemRemove;
-        if (!confirm('Delete chemical "' + chemId + '"?\n\nThis action cannot be undone.')) return;
+        var confirmed = await _showConfirmDialog(
+          "Delete Chemical",
+          'Delete chemical "' + chemId + '"? This action cannot be undone.',
+          "Delete", true
+        );
+        if (!confirmed) return;
         try {
           var result = await window.electronAPI.chemicalsDelete(chemId);
           if (result.success) {
@@ -461,7 +543,12 @@ window.HomePage = (() => {
     document.querySelectorAll("[data-batch-remove]").forEach(function (btn) {
       btn.addEventListener("click", async function () {
         var batchId = btn.dataset.batchRemove;
-        if (!confirm('Delete batch "' + batchId + '"?\n\nThis will also remove all linked chemical records. This action cannot be undone.')) return;
+        var confirmed = await _showConfirmDialog(
+          "Delete Batch",
+          'Delete batch "' + batchId + '"? This will also remove all linked chemical records. This action cannot be undone.',
+          "Delete", true
+        );
+        if (!confirmed) return;
         try {
           var result = await window.electronAPI.batchesDelete(batchId);
           if (result.success) {
@@ -624,7 +711,12 @@ window.HomePage = (() => {
     document.querySelectorAll("[data-prod-remove]").forEach(function (btn) {
       btn.addEventListener("click", async function () {
         var recId = parseInt(btn.dataset.prodRemove, 10);
-        if (!confirm("Delete production record #" + recId + "?\n\nThis action cannot be undone.")) return;
+        var confirmed = await _showConfirmDialog(
+          "Delete Record",
+          "Delete production record #" + recId + "? This action cannot be undone.",
+          "Delete", true
+        );
+        if (!confirmed) return;
         try {
           var result = await window.electronAPI.productionDelete(recId);
           if (result.success) {
@@ -823,7 +915,12 @@ window.HomePage = (() => {
       btn.addEventListener("click", async function () {
         var gsmRange = btn.dataset.deleteMultiplier;
         var msgEl    = document.getElementById("mult-msg-" + gsmRange);
-        if (!confirm("Delete multiplier range \"" + gsmRange + "\"?")) return;
+        var confirmed = await _showConfirmDialog(
+          "Delete Multiplier Range",
+          'Delete multiplier range "' + gsmRange + '"? This action cannot be undone.',
+          "Delete", true
+        );
+        if (!confirmed) return;
         btn.disabled = true;
         try {
           var result = await window.electronAPI.multipliersDelete(gsmRange);
@@ -1118,13 +1215,10 @@ window.HomePage = (() => {
     }
 
     var session = AuthGuard.getSession();
-    if (!session || !session.user) {
-      console.error("[HomePage] No user session — cannot submit.");
-      return;
-    }
+    var userId = (session && session.user) ? session.user.id : null;
 
     var record = {
-      user_id: session.user.id,
+      user_id: userId,
       batch_id: s.batchNumber || null,
       schedule_date: s.scheduleDate || null,
       stenter: s.stenter || null,
@@ -1339,106 +1433,6 @@ window.HomePage = (() => {
       });
   }
 
-  // ── Chemical file parser ────────────────────────────────────────────
-  // Target columns: C (absolute col index 2, 0-based from A) = chemical_id
-  //                 G (absolute col index 6, 0-based from A) = chemical_name
-  // Data starts at Excel Row 3 (absolute row index 2, 0-based from row 1).
-  // Column/row offsets are computed from the sheet's !ref so any sheet
-  // layout (starting at B2, A1, etc.) is handled correctly.
-  function _parseChemFile(file) {
-    if (!file) return;
-    var ext = file.name.split(".").pop().toLowerCase();
-    if (["xlsx", "xls", "csv"].indexOf(ext) === -1) {
-      H.setState({ uploadState: "error", uploadMsg: "Unsupported file type. Please upload .xlsx, .xls, or .csv" });
-      return;
-    }
-    H.setState({ uploadState: "parsing", uploadedRows: [], importResult: null });
-
-    if (ext === "csv") {
-      var reader = new FileReader();
-      reader.onload = function (e) {
-        try {
-          var lines = e.target.result.split(/\r?\n/);
-          // Convert each line into a raw column array
-          var rawRows = lines.map(function (l) {
-            return l.split(",").map(function (v) { return v.trim().replace(/^"|"$/g, ""); });
-          });
-          // CSV has no !ref offset — col A = index 0, row 1 = index 0
-          _processChemRows(rawRows, file.name, 0, 0);
-        } catch (err) {
-          H.setState({ uploadState: "error", uploadMsg: "CSV parse error: " + err.message });
-        }
-      };
-      reader.readAsText(file);
-    } else {
-      // xlsx / xls — use SheetJS with header:1 to get raw column arrays
-      var doRead = function () {
-        var XLSX = window.XLSX;
-        var reader2 = new FileReader();
-        reader2.onload = function (e) {
-          try {
-            var wb  = XLSX.read(e.target.result, { type: "array" });
-            var ws  = wb.Sheets[wb.SheetNames[0]];
-
-            // Determine where the sheet's data actually starts
-            var ref       = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : { s: { r: 0, c: 0 } };
-            var colOffset = ref.s.c; // e.g. 1 if sheet starts at col B
-            var rowOffset = ref.s.r; // e.g. 1 if sheet starts at row 2
-
-            var rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-            _processChemRows(rawRows, file.name, colOffset, rowOffset);
-          } catch (err) {
-            H.setState({ uploadState: "error", uploadMsg: "XLSX parse error: " + err.message });
-          }
-        };
-        reader2.readAsArrayBuffer(file);
-      };
-      if (window.XLSX) {
-        doRead();
-      } else {
-        H.setState({ uploadState: "error", uploadMsg: "XLSX library not available. Please restart the app." });
-      }
-    }
-  }
-
-  // Processes raw row arrays produced by SheetJS header:1.
-  // colOffset / rowOffset come from the sheet's !ref start position.
-  // Absolute targets: col C = index 2, col G = index 6, data from Excel row 3 = abs row index 2.
-  function _processChemRows(rawRows, fileName, colOffset, rowOffset) {
-    colOffset = colOffset || 0;
-    rowOffset = rowOffset || 0;
-
-    // Excel row 3 = absolute row index 2; in the rawRows array that is (2 - rowOffset)
-    var dataStart = Math.max(0, 2 - rowOffset);
-    var colC = 2 - colOffset; // absolute col C (index 2) adjusted for sheet start
-    var colG = 6 - colOffset; // absolute col G (index 6) adjusted for sheet start
-
-    var dataRows = rawRows.slice(dataStart);
-    var seen = {};
-    var mapped = [];
-
-    dataRows.forEach(function (row) {
-      var chemId   = (row[colC] != null ? String(row[colC]) : "").trim();
-      var chemName = (row[colG] != null ? String(row[colG]) : "").trim();
-      if (!chemId || !chemName) return;    // skip blank rows
-      if (seen[chemId]) return;            // deduplicate within file
-      seen[chemId] = true;
-      mapped.push({ chemical_id: chemId, chemical_name: chemName, unit: "g/L" });
-    });
-
-    if (!mapped.length) {
-      H.setState({
-        uploadState: "error",
-        uploadMsg: "No valid rows found. Data must start at Row 3 — Column C = Chemical ID, Column G = Chemical Name.",
-      });
-      return;
-    }
-    H.setState({
-      uploadState: "preview",
-      uploadedRows: mapped,
-      uploadMsg: mapped.length + " chemical" + (mapped.length > 1 ? "s" : "") + ' found in "' + fileName + '"',
-    });
-  }
 
   // ── Chemical-cell parser (Column P) ──────────────────────────────────
   // Finds all <id>:<number>g/L patterns. Skips water (id=0000).
@@ -1572,14 +1566,7 @@ window.HomePage = (() => {
 
   // ── Public API ─────────────────────────────────────────────────────────────
   async function render(container) {
-    var user = AuthGuard.getUser();
-    if (!user) {
-      Logger.warn("HomePage", "No user in session — redirecting to login");
-      Router.navigate("login");
-      return;
-    }
-
-    H.setUser(user);
+    H.setUser(null);
     H.setContainer(container);
     H.resetState();
     _render();
@@ -1589,7 +1576,7 @@ window.HomePage = (() => {
     // Fetch multipliers from DB for the calculation algorithm
     _fetchMultipliers();
 
-    Logger.info("HomePage", "LiqCalc loaded", { user: user.email });
+    Logger.info("HomePage", "LiqCalc loaded");
   }
 
   return { render: render };

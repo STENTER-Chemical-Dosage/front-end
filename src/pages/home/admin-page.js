@@ -1,4 +1,4 @@
-/**
+﻿/**
  * src/pages/home/admin-page.js â€” Admin Dashboard
  *
  * Renders the admin dashboard with:
@@ -458,126 +458,29 @@
       return 0;
     });
 
-    var dropBorder = uploadState === "error" ? "#FECACA"
-                   : (uploadState === "idle"  ? H.BORDER : H.ACCENT);
-    var dropBg     = uploadState === "error" ? "#FEF2F2"
-                   : (uploadState === "idle"  ? "#FAFBFC" : H.ACCENT_LIGHT);
-    var dropContent = "";
-
-    if (uploadState === "idle") {
-      dropContent =
-        '<svg width="36" height="36" fill="none" stroke="#9CA3AF" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 10px;display:block">' +
-        '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>' +
-        '<polyline points="14 2 14 8 20 8"/>' +
-        '<line x1="12" y1="18" x2="12" y2="12"/>' +
-        '<polyline points="9 15 12 12 15 15"/>' +
-        '</svg>' +
-        '<div style="font-size:14px;font-weight:600;color:' + H.TEXT + '">Drop your Excel file here or <span style="color:' + H.ACCENT + '">browse</span></div>' +
-        '<div style="font-size:12px;color:' + H.MUTED + ';margin-top:4px">.xlsx \u00b7 .xls \u00b7 .csv</div>' +
-        '<div style="font-size:11px;color:' + H.MUTED + ';margin-top:3px">Chemicals start from <b>Row 3</b> \u00b7 Column C = Chemical ID \u00b7 Column G = Chemical Name</div>';
-
-    } else if (uploadState === "parsing") {
-      dropContent =
-        '<div style="font-size:14px;color:' + H.MUTED + ';display:flex;align-items:center;justify-content:center;gap:10px">' +
-        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:chemSpin 1s linear infinite">' +
-        '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/>' +
-        '</svg>Reading file\u2026</div>';
-
-    } else if (uploadState === "preview") {
-      dropContent =
-        '<div style="font-size:13px;color:' + H.ACCENT + ';font-weight:600">' +
-        '\u2139\ufe0f ' + H.escape(uploadMsg) + ' \u2014 review below before importing</div>';
-
-    } else if (uploadState === "importing") {
-      dropContent =
-        '<div style="font-size:14px;color:' + H.MUTED + ';display:flex;align-items:center;justify-content:center;gap:10px">' +
-        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="' + H.ACCENT + '" stroke-width="2" style="animation:chemSpin 1s linear infinite">' +
-        '<path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity="0.25"/><path d="M21 12a9 9 0 00-9-9"/>' +
-        '</svg>Saving to database\u2026</div>';
-
-    } else if (uploadState === "done") {
-      dropContent =
-        '<div style="font-size:13px;color:#15803D;font-weight:600">' +
-        '\u2713 Import complete \u2014 click or drop another file to import more</div>';
-
-    } else if (uploadState === "error") {
-      dropContent =
-        '<div style="font-size:13px;color:#DC2626;font-weight:600">\u26a0\ufe0f ' + H.escape(uploadMsg) + '</div>';
-    }
+    var inpStyle = 'height:40px;border:1.5px solid ' + H.BORDER + ';border-radius:8px;padding:0 12px;font-size:14px;font-family:\'IBM Plex Sans\',sans-serif;color:' + H.TEXT + ';background:#FAFBFC;outline:none;box-sizing:border-box;width:100%';
 
     var uploadCard =
       '<div style="background:' + H.CARD + ';border:1px solid ' + H.BORDER + ';border-radius:12px;padding:24px;margin-bottom:20px">' +
-      '<div style="margin-bottom:16px">' +
-      '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + '">Upload Chemicals via Excel</div>' +
-      '<div style="font-size:12px;color:' + H.MUTED + ';margin-top:3px">Reads Column C (ID) and Column G (Name) starting from Row 3 \u00b7 Duplicate IDs are skipped</div>' +
+      '<div style="margin-bottom:18px">' +
+      '<div style="font-size:15px;font-weight:700;color:' + H.TEXT + '">Add New Chemical</div>' +
+      '<div style="font-size:12px;color:' + H.MUTED + ';margin-top:3px">Enter a unique Chemical ID and name. Duplicate IDs will be rejected.</div>' +
       '</div>' +
-      '<div id="chem-dropzone" style="border:2px dashed ' + dropBorder + ';border-radius:10px;padding:32px 24px;text-align:center;cursor:pointer;background:' + dropBg + ';transition:all 0.2s">' +
-      '<input id="chem-file-input" type="file" accept=".xlsx,.xls,.csv" style="display:none" />' +
-      dropContent +
+      '<div id="new-chem-error" style="display:none;font-size:13px;color:#DC2626;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;margin-bottom:14px"></div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+      '<div style="flex:1;min-width:140px">' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Chemical ID</label>' +
+      '<input id="inp-new-chem-id" type="text" placeholder="e.g. CHEM-001" style="' + inpStyle + '" />' +
+      '</div>' +
+      '<div style="flex:2;min-width:200px">' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:' + H.MUTED + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Chemical Name</label>' +
+      '<input id="inp-new-chem-name" type="text" placeholder="e.g. Softener A" style="' + inpStyle + '" />' +
+      '</div>' +
+      '<button id="btn-chem-add" style="height:40px;padding:0 24px;background:' + H.ACCENT + ';color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif;white-space:nowrap">+ Add Chemical</button>' +
+      '</div>' +
       '</div>';
 
-    // â”€â”€ Preview table â”€â”€
-    if (uploadState === "preview" && uploadedRows.length > 0) {
-      var previewRows = "";
-      uploadedRows.slice(0, 8).forEach(function (r) {
-        previewRows +=
-          '<tr style="border-bottom:1px solid ' + H.BORDER + '">' +
-          '<td style="padding:8px 14px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;font-weight:700;color:' + H.ACCENT + '">' + H.escape(r.chemical_id) + '</td>' +
-          '<td style="padding:8px 14px;font-weight:600">' + H.escape(r.chemical_name) + '</td>' +
-          '<td style="padding:8px 14px;color:' + H.MUTED + '">' + H.escape(r.unit) + '</td>' +
-          '</tr>';
-      });
-      if (uploadedRows.length > 8) {
-        previewRows += '<tr><td colspan="3" style="padding:8px 14px;color:' + H.MUTED + ';text-align:center;font-size:12px">\u2026and ' + (uploadedRows.length - 8) + ' more rows</td></tr>';
-      }
-      uploadCard +=
-        '<div style="margin-top:16px">' +
-        '<div style="font-size:13px;font-weight:700;color:' + H.TEXT + ';margin-bottom:10px">' +
-        'Preview \u2014 ' + uploadedRows.length + ' chemical' + (uploadedRows.length > 1 ? 's' : '') + ' detected' +
-        '</div>' +
-        '<div style="overflow-x:auto;border:1px solid ' + H.BORDER + ';border-radius:8px;margin-bottom:14px">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
-        '<thead><tr style="background:#F8F9FA">' +
-        ['Chemical ID','Chemical Name','Unit'].map(function (h) {
-          return '<th style="padding:9px 14px;text-align:left;font-weight:700;color:' + H.MUTED + ';font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid ' + H.BORDER + '">' + h + '</th>';
-        }).join('') +
-        '</tr></thead><tbody>' + previewRows + '</tbody>' +
-        '</table></div>' +
-        '<div style="display:flex;gap:10px">' +
-        '<button id="btn-chem-confirm-import" style="height:38px;padding:0 22px;background:' + H.ACCENT + ';color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif">' +
-        '\u2713 Import ' + uploadedRows.length + ' Chemical' + (uploadedRows.length > 1 ? 's' : '') + ' to Database</button>' +
-        '<button id="btn-chem-discard-import" style="height:38px;padding:0 18px;background:transparent;color:' + H.TEXT + ';border:1.5px solid ' + H.BORDER + ';border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif">Discard</button>' +
-        '</div></div>';
-    }
-
-    // â”€â”€ Import result â”€â”€
-    if (uploadState === "done" && importResult) {
-      var skippedHtml = "";
-      if (importResult.skipped && importResult.skipped.length > 0) {
-        var skippedItems = importResult.skipped.map(function (r) {
-          return '<li style="padding:3px 0;font-size:12px;color:#92400E">' +
-            '<code style="background:#FDE68A;padding:1px 6px;border-radius:4px;font-size:11px;margin-right:6px">' + H.escape(r.chemical_id) + '</code>' +
-            H.escape(r.chemical_name) +
-            '</li>';
-        }).join('');
-        skippedHtml =
-          '<div style="margin-top:12px;padding:12px 16px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px">' +
-          '<div style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:6px">' +
-          '\u26a0\ufe0f ' + importResult.skipped.length + ' already existed \u2014 not added:' +
-          '</div>' +
-          '<ul style="list-style:none;padding:0;margin:0">' + skippedItems + '</ul>' +
-          '</div>';
-      }
-      uploadCard +=
-        '<div style="margin-top:16px;padding:14px 16px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px">' +
-        '<div style="font-size:14px;font-weight:700;color:#15803D">\u2713 ' + importResult.added.length + ' chemical' + (importResult.added.length !== 1 ? 's' : '') + ' added to the database.</div>' +
-        skippedHtml +
-        '</div>';
-    }
-
-    uploadCard += '</div>';
-
-    // â”€â”€ Registry table â”€â”€
+    // ── Registry table ──
     var inputSm = 'height:36px;border:1.5px solid ' + H.BORDER + ';border-radius:8px;padding:0 12px;font-size:13px;font-family:\'IBM Plex Sans\',sans-serif;color:' + H.TEXT + ';background:#FAFBFC;outline:none;';
 
     var tableBody = "";

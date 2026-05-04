@@ -20,6 +20,9 @@ window.HomeApp = (() => {
   const DANGER = "#C0392B";
   const SUCCESS = "#1A4F8A";
 
+  /** Password required to access the Admin Dashboard */
+  const ADMIN_PASSWORD = "admin123";
+
   const CHEM_COLORS = ["#1A4F8A", "#3B82F6", "#60A5FA", "#1E40AF", "#6366F1", "#0EA5E9"];
   const CHEMICAL_LIST = [
     "Softener A",
@@ -208,6 +211,9 @@ window.HomeApp = (() => {
 
   // ── Public API ─────────────────────────────────────────────────────────────
   return {
+    // Admin access
+    ADMIN_PASSWORD: ADMIN_PASSWORD,
+
     // Design tokens
     ACCENT: ACCENT,
     ACCENT_LIGHT: ACCENT_LIGHT,

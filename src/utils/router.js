@@ -37,7 +37,7 @@ window.Router = (() => {
   const routes    = new Map();
 
   /** The name of the fallback route shown when no match is found */
-  const NOT_FOUND = "login";
+  const NOT_FOUND = "home";
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ window.Router = (() => {
         <div style="padding:2rem;text-align:center;color:#dc2626">
           <h2>Page Error</h2>
           <p>Something went wrong loading this page. Check the console for details.</p>
-          <a href="#login">Go to Login</a>
+          <a href="#home">Go to Home</a>
         </div>`;
     }
   }
