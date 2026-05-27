@@ -27,12 +27,12 @@
   // ── Register routes ────────────────────────────────────────────────────────
 
   // Public-only pages  → redirect to #home when user is already authenticated
-  Router.register("login",  LoginPage.render,  { publicOnly: true });
-  Router.register("signup", SignupPage.render, { publicOnly: true });
-  Router.register("reset",  ResetPage.render,  { publicOnly: true });
+  Router.register("login",  LoginPage.render,  {});
+  Router.register("signup", SignupPage.render, {});
+  Router.register("reset",  ResetPage.render,  {});
 
-  // Protected pages  → redirect to #login when no valid session exists
-  Router.register("home", HomePage.render, { protected: true });
+  // Home is public — no login required to view the input page
+  Router.register("home", HomePage.render, {});
 
   // ── Start the router ───────────────────────────────────────────────────────
   // Resolves the current URL hash and renders the matching page.

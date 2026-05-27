@@ -1,0 +1,857 @@
+/**
+ * src/db/database.js — PostgreSQL Database + IPC Auth Handlers
+ *
+ * Connects to the Supabase PostgreSQL database directly using the `pg` pool.
+ * Registers ipcMain handlers for all auth operations so the renderer can
+ * call them safely via the preload contextBridge.
+ *
+ * IPC Channels exposed:
+ *  - auth:login          → { email, password }
+ *  - auth:signup         → { name, email, password }
+ *  - auth:password-reset → { email }
+ *
+ * Call initDB() once in main.js after app is ready to create the users
+ * table if it doesn't already exist.
+ */
+
+const { ipcMain } = require("electron");
+const { Pool }    = require("pg");
+const bcrypt      = require("bcryptjs");
+
+// ── Database Connection ────────────────────────────────────────────────────────
+
+/**
+ * pg connection pool — using individual params instead of a URL string
+ * so special characters in the password (e.g. semicolon) are handled safely.
+ */
+// const pool = new Pool({
+//   user    : "postgres",
+//   password: "stenterchemical;dosage",
+//   host    : "db.svetohbyasqzinlzvvky.supabase.co",
+//   port    : 5432,
+//   database: "postgres",
+//   ssl     : { rejectUnauthorized: false }, // required for Supabase hosted Postgres
+// });
+//postgresql://postgres:[YOUR-PASSWORD]@db.svetohbyasqzinlzvvky.supabase.co:5432/postgres
+const pool = new Pool({
+  user    : "postgres.svetohbyasqzinlzvvky",
+  password: "stenterchemical;dosage",
+  host    : "aws-1-ap-northeast-2.pooler.supabase.com",
+  port    : 5432,
+  database: "postgres",
+  pool_mode: "session",
+  ssl     : { rejectUnauthorized: false }, // required for Supabase hosted Postgres
+});
+
+pool.on("error", (err) => {
+  console.error("[DB] Unexpected pool error:", err.message);
+});
+
+// ── Initialisation ─────────────────────────────────────────────────────────────
+
+/**
+ * initDB — Creates the users table if it doesn't already exist.
+ * Must be awaited before the first auth query hits the database.
+ */
+function normalizeUuid(value) {
+  const text = String(value || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
+    ? text
+    : null;
+}
+
+async function initDB() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id           UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+        name         TEXT        NOT NULL,
+        email        TEXT        UNIQUE NOT NULL,
+        password_hash TEXT       NOT NULL,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS chemicals (
+        chemical_id   TEXT        PRIMARY KEY,
+        chemical_name TEXT        NOT NULL,
+        unit          TEXT        NOT NULL DEFAULT 'g/L',
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS batches (
+        batch_id      TEXT        PRIMARY KEY,
+        schedule_date TEXT,
+        stenter       TEXT,
+        weight        TEXT,
+        width         TEXT,
+        length        TEXT,
+        gsm           TEXT,
+        temperature   TEXT,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS batch_chemicals (
+        id          SERIAL PRIMARY KEY,
+        batch_id    TEXT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
+        chemical_id TEXT NOT NULL,
+        density     TEXT NOT NULL
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS gsm_multipliers (
+        gsm_range      TEXT        PRIMARY KEY,
+        range_min      NUMERIC     NOT NULL,
+        range_max      NUMERIC     NOT NULL,
+        wet_multiplier NUMERIC     NOT NULL DEFAULT 1.2,
+        dry_multiplier NUMERIC     NOT NULL DEFAULT 1.2,
+        sort_order     INTEGER     NOT NULL DEFAULT 0
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS production_records (
+        id                SERIAL      PRIMARY KEY,
+        user_id           UUID,
+        batch_id          TEXT,
+        schedule_date     TEXT,
+        stenter           TEXT,
+        wet_dry           TEXT        NOT NULL,
+        gsm               NUMERIC,
+        width             NUMERIC,
+        length            NUMERIC,
+        cloth_weight      NUMERIC,
+        fabric_factor     NUMERIC,
+        gsm_range         TEXT,
+        multiplier        NUMERIC,
+        total_bath        NUMERIC,
+        t_value           NUMERIC     NOT NULL,
+        bath_concentration NUMERIC,
+        submitted_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      ALTER TABLE production_records
+      ADD COLUMN IF NOT EXISTS user_id UUID
+    `);
+
+    await client.query(`
+      ALTER TABLE production_records
+      ALTER COLUMN user_id DROP NOT NULL
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS production_chemicals (
+        id            SERIAL  PRIMARY KEY,
+        record_id     INTEGER NOT NULL REFERENCES production_records(id) ON DELETE CASCADE,
+        chemical_id   TEXT    NOT NULL DEFAULT '',
+        chemical_name TEXT    NOT NULL,
+        density       NUMERIC NOT NULL,
+        dosage        NUMERIC NOT NULL
+      )
+    `);
+
+    // Seed default multipliers if the table is empty
+    const { rows: existingMults } = await client.query(
+      "SELECT 1 FROM gsm_multipliers LIMIT 1"
+    );
+    if (existingMults.length === 0) {
+      const defaults = [
+        { gsm_range: "100-120", range_min: 100, range_max: 120, wet: 1.2, dry: 1.2, order: 1 },
+        { gsm_range: "120-140", range_min: 120, range_max: 140, wet: 1.4, dry: 1.4, order: 2 },
+        { gsm_range: "140-160", range_min: 140, range_max: 160, wet: 1.6, dry: 1.6, order: 3 },
+        { gsm_range: "160-180", range_min: 160, range_max: 180, wet: 1.8, dry: 1.8, order: 4 },
+        { gsm_range: "180-200", range_min: 180, range_max: 200, wet: 2.0, dry: 2.0, order: 5 },
+        { gsm_range: "200-220", range_min: 200, range_max: 220, wet: 2.2, dry: 2.2, order: 6 },
+        { gsm_range: "220-240", range_min: 220, range_max: 240, wet: 2.4, dry: 2.4, order: 7 },
+        { gsm_range: "240-260", range_min: 240, range_max: 260, wet: 2.6, dry: 2.6, order: 8 },
+        { gsm_range: "260-280", range_min: 260, range_max: 280, wet: 2.8, dry: 2.8, order: 9 },
+        { gsm_range: "280-300", range_min: 280, range_max: 300, wet: 3.0, dry: 3.0, order: 10 },
+        { gsm_range: "300-320", range_min: 300, range_max: 320, wet: 3.2, dry: 3.2, order: 11 },
+        { gsm_range: "320-340", range_min: 320, range_max: 340, wet: 3.4, dry: 3.4, order: 12 },
+        { gsm_range: "340-360", range_min: 340, range_max: 360, wet: 3.6, dry: 3.6, order: 13 },
+        { gsm_range: "360-380", range_min: 360, range_max: 380, wet: 3.8, dry: 3.8, order: 14 },
+        { gsm_range: "380-400", range_min: 380, range_max: 400, wet: 4.0, dry: 4.0, order: 15 },
+      ];
+      for (const d of defaults) {
+        await client.query(
+          `INSERT INTO gsm_multipliers (gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [d.gsm_range, d.range_min, d.range_max, d.wet, d.dry, d.order]
+        );
+      }
+      console.log("[DB] gsm_multipliers seeded with 15 default ranges (100-400).");
+    } else {
+      // Insert any missing ranges from 200-400 that don't already exist
+      const extendedDefaults = [
+        { gsm_range: "200-220", range_min: 200, range_max: 220, wet: 2.2, dry: 2.2, order: 6 },
+        { gsm_range: "220-240", range_min: 220, range_max: 240, wet: 2.4, dry: 2.4, order: 7 },
+        { gsm_range: "240-260", range_min: 240, range_max: 260, wet: 2.6, dry: 2.6, order: 8 },
+        { gsm_range: "260-280", range_min: 260, range_max: 280, wet: 2.8, dry: 2.8, order: 9 },
+        { gsm_range: "280-300", range_min: 280, range_max: 300, wet: 3.0, dry: 3.0, order: 10 },
+        { gsm_range: "300-320", range_min: 300, range_max: 320, wet: 3.2, dry: 3.2, order: 11 },
+        { gsm_range: "320-340", range_min: 320, range_max: 340, wet: 3.4, dry: 3.4, order: 12 },
+        { gsm_range: "340-360", range_min: 340, range_max: 360, wet: 3.6, dry: 3.6, order: 13 },
+        { gsm_range: "360-380", range_min: 360, range_max: 380, wet: 3.8, dry: 3.8, order: 14 },
+        { gsm_range: "380-400", range_min: 380, range_max: 400, wet: 4.0, dry: 4.0, order: 15 },
+      ];
+      for (const d of extendedDefaults) {
+        try {
+          await client.query(
+            `INSERT INTO gsm_multipliers (gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (gsm_range) DO NOTHING`,
+            [d.gsm_range, d.range_min, d.range_max, d.wet, d.dry, d.order]
+          );
+        } catch (_) { /* ignore duplicates */ }
+      }
+      console.log("[DB] gsm_multipliers checked/extended for 200-400 ranges.");
+    }
+
+    console.log("[DB] Database initialised — users, chemicals, batches, gsm_multipliers & production_records tables ready.");
+  } catch (err) {
+    console.error("[DB] Failed to initialise database:", err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ── IPC Handlers ───────────────────────────────────────────────────────────────
+
+/**
+ * auth:login — Verifies email/password against the database.
+ * Returns a session-like object with a token and user info on success.
+ */
+ipcMain.handle("auth:login", async (_event, { email, password }) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, name, email, password_hash FROM users WHERE email = $1",
+      [email.toLowerCase().trim()]
+    );
+
+    if (rows.length === 0) {
+      return {
+        success: false,
+        message: "Invalid email or password. Please try again.",
+        code   : "INVALID_CREDENTIALS",
+      };
+    }
+
+    const user  = rows[0];
+    const match = await bcrypt.compare(password, user.password_hash);
+
+    if (!match) {
+      return {
+        success: false,
+        message: "Invalid email or password. Please try again.",
+        code   : "INVALID_CREDENTIALS",
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        // For a real production app replace with a proper JWT
+        token: "db-session-" + user.id,
+        user : { id: user.id, name: user.name, email: user.email },
+      },
+    };
+  } catch (err) {
+    console.error("[DB] auth:login error:", err.message);
+    return {
+      success: false,
+      message: "An unexpected error occurred. Please try again.",
+      code   : "UNKNOWN",
+    };
+  }
+});
+
+/**
+ * auth:signup — Creates a new user after hashing the password.
+ * Returns INVALID if the email is already taken.
+ */
+ipcMain.handle("auth:signup", async (_event, { name, email, password }) => {
+  try {
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const { rows } = await pool.query(
+      `INSERT INTO users (name, email, password_hash)
+       VALUES ($1, $2, $3)
+       RETURNING id, name, email`,
+      [name.trim(), email.toLowerCase().trim(), passwordHash]
+    );
+
+    const user = rows[0];
+    return {
+      success: true,
+      data: {
+        token: "db-session-" + user.id,
+        user : { id: user.id, name: user.name, email: user.email },
+      },
+    };
+  } catch (err) {
+    console.error("[DB] auth:signup error:", err.message);
+
+    // PostgreSQL unique-violation error code
+    if (err.code === "23505") {
+      return {
+        success: false,
+        message: "An account with this email already exists. Try logging in.",
+        code   : "EMAIL_TAKEN",
+      };
+    }
+
+    return {
+      success: false,
+      message: "An unexpected error occurred. Please try again.",
+      code   : "UNKNOWN",
+    };
+  }
+});
+
+/**
+ * auth:password-reset — Prototype stub: acknowledges the request.
+ * To send a real reset email, integrate an email provider (e.g. SendGrid,
+ * Resend) here and generate a time-limited reset token stored in the DB.
+ */
+ipcMain.handle("auth:password-reset", async (_event, { email }) => {
+  try {
+    // Check whether the user exists (result intentionally not exposed to caller)
+    const { rows } = await pool.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email.toLowerCase().trim()]
+    );
+
+    if (rows.length === 0) {
+      console.warn("[DB] Password reset requested for unknown email — generic response sent.");
+    }
+
+    // Always return generic success to avoid confirming account existence
+    return {
+      success: true,
+      message: "If an account with that email exists, a reset link has been sent.",
+    };
+  } catch (err) {
+    console.error("[DB] auth:password-reset error:", err.message);
+    return {
+      success: false,
+      message: "An unexpected error occurred. Please try again.",
+      code   : "UNKNOWN",
+    };
+  }
+});
+
+// ── Chemical Handlers ───────────────────────────────────────────────────────────
+
+/**
+ * chemicals:list — Returns all chemicals ordered by chemical_id.
+ */
+ipcMain.handle("chemicals:list", async () => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT chemical_id, chemical_name, unit FROM chemicals ORDER BY chemical_id"
+    );
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] chemicals:list error:", err.message);
+    return { success: false, message: "Failed to load chemicals.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * chemicals:import — Inserts new chemicals, skipping any whose chemical_id
+ * already exists.  Returns counts of added rows and the skipped ones.
+ *
+ * @param {{ rows: Array<{ chemical_id: string, chemical_name: string, unit: string }> }} payload
+ */
+ipcMain.handle("chemicals:import", async (_event, { rows }) => {
+  const added   = [];
+  const skipped = [];
+
+  for (const row of rows) {
+    try {
+      await pool.query(
+        `INSERT INTO chemicals (chemical_id, chemical_name, unit)
+         VALUES ($1, $2, $3)`,
+        [row.chemical_id.trim(), row.chemical_name.trim(), row.unit || "g/L"]
+      );
+      added.push(row);
+    } catch (err) {
+      // 23505 = unique_violation (chemical_id already exists)
+      if (err.code === "23505") {
+        skipped.push(row);
+      } else {
+        console.error("[DB] chemicals:import row error:", err.message, row);
+        skipped.push({ ...row, _error: err.message });
+      }
+    }
+  }
+
+  return { success: true, data: { added, skipped } };
+});
+
+/**
+ * chemicals:delete — Deletes a single chemical by chemical_id.
+ */
+ipcMain.handle("chemicals:delete", async (_event, { chemical_id }) => {
+  try {
+    await pool.query("DELETE FROM chemicals WHERE chemical_id = $1", [chemical_id]);
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] chemicals:delete error:", err.message);
+    return { success: false, message: "Failed to delete chemical." };
+  }
+});
+
+/**
+ * chemicals:update — Renames chemical_id and/or chemical_name.
+ * Returns DUPLICATE_ID error if the new id already belongs to another row.
+ */
+ipcMain.handle("chemicals:update", async (_event, { old_id, new_id, new_name }) => {
+  try {
+    if (new_id.trim() !== old_id.trim()) {
+      const { rows } = await pool.query(
+        "SELECT 1 FROM chemicals WHERE chemical_id = $1",
+        [new_id.trim()]
+      );
+      if (rows.length > 0) {
+        return {
+          success: false,
+          code: "DUPLICATE_ID",
+          message: `Cannot rename: a chemical with ID "${new_id.trim()}" already exists.`,
+        };
+      }
+    }
+    await pool.query(
+      "UPDATE chemicals SET chemical_id = $1, chemical_name = $2 WHERE chemical_id = $3",
+      [new_id.trim(), new_name.trim(), old_id.trim()]
+    );
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] chemicals:update error:", err.message);
+    return { success: false, message: "Failed to update chemical." };
+  }
+});
+
+// ── Batch Handlers ─────────────────────────────────────────────────────────────
+
+ipcMain.handle("batches:list", async () => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT b.batch_id, b.schedule_date, b.stenter, b.weight, b.width,
+             b.length, b.gsm, b.temperature, b.created_at,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'chemical_id', bc.chemical_id,
+                   'density', bc.density,
+                   'chemical_name', c.chemical_name
+                 )
+               ) FILTER (WHERE bc.chemical_id IS NOT NULL),
+               '[]'::json
+             ) AS chemicals
+      FROM batches b
+      LEFT JOIN batch_chemicals bc ON b.batch_id = bc.batch_id
+      LEFT JOIN chemicals c ON bc.chemical_id = c.chemical_id
+      GROUP BY b.batch_id, b.schedule_date, b.stenter, b.weight, b.width,
+               b.length, b.gsm, b.temperature, b.created_at
+      ORDER BY b.schedule_date DESC, b.batch_id
+    `);
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] batches:list error:", err.message);
+    return { success: false, message: "Failed to load batches." };
+  }
+});
+
+ipcMain.handle("batches:import", async (_event, { rows }) => {
+  const added    = [];
+  const skipped  = [];
+  const warnings = []; // unrecognized chemical_ids
+
+  for (const row of rows) {
+    try {
+      await pool.query(
+        `INSERT INTO batches (batch_id, schedule_date, stenter, weight, width, length, gsm, temperature)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [row.batch_id, row.schedule_date, row.stenter, row.weight,
+         row.width, row.length, row.gsm, row.temperature]
+      );
+      for (const chem of (row.chemicals || [])) {
+        // Strip leading zeros so "0011" matches stored id "11", "0002" -> "2"
+        const normId = /^\d+$/.test(chem.chemical_id)
+          ? String(parseInt(chem.chemical_id, 10))
+          : chem.chemical_id;
+        const { rows: existing } = await pool.query(
+          "SELECT 1 FROM chemicals WHERE chemical_id = $1", [normId]
+        );
+        if (existing.length === 0) {
+          warnings.push({ batch_id: row.batch_id, chemical_id: chem.chemical_id });
+          continue;
+        }
+        await pool.query(
+          "INSERT INTO batch_chemicals (batch_id, chemical_id, density) VALUES ($1, $2, $3)",
+          [row.batch_id, normId, chem.density]
+        );
+      }
+      added.push(row.batch_id);
+    } catch (err) {
+      if (err.code === "23505") {
+        skipped.push(row.batch_id);
+      } else {
+        console.error("[DB] batches:import row error:", err.message, row.batch_id);
+        skipped.push(row.batch_id);
+      }
+    }
+  }
+  return { success: true, data: { added, skipped, warnings } };
+});
+
+ipcMain.handle("batches:delete", async (_event, { batch_id }) => {
+  try {
+    await pool.query("DELETE FROM batches WHERE batch_id = $1", [batch_id]);
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] batches:delete error:", err.message);
+    return { success: false, message: "Failed to delete batch." };
+  }
+});
+
+/**
+ * batches:get — Fetches a single batch by batch_id, including its chemicals.
+ */
+ipcMain.handle("batches:get", async (_event, { batch_id }) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT b.batch_id, b.schedule_date, b.stenter, b.weight, b.width,
+             b.length, b.gsm, b.temperature,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'chemical_id', bc.chemical_id,
+                   'density', bc.density,
+                   'chemical_name', c.chemical_name
+                 )
+               ) FILTER (WHERE bc.chemical_id IS NOT NULL),
+               '[]'::json
+             ) AS chemicals
+      FROM batches b
+      LEFT JOIN batch_chemicals bc ON b.batch_id = bc.batch_id
+      LEFT JOIN chemicals c ON bc.chemical_id = c.chemical_id
+      WHERE b.batch_id = $1
+      GROUP BY b.batch_id, b.schedule_date, b.stenter, b.weight, b.width,
+               b.length, b.gsm, b.temperature`,
+      [batch_id.trim()]
+    );
+    if (rows.length === 0) {
+      return { success: false, message: "Batch not found.", code: "NOT_FOUND" };
+    }
+    return { success: true, data: rows[0] };
+  } catch (err) {
+    console.error("[DB] batches:get error:", err.message);
+    return { success: false, message: "Failed to fetch batch." };
+  }
+});
+
+ipcMain.handle("batches:update-full", async (_event, { old_id, batch }) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const newId = (batch.batch_id || "").trim();
+    if (!newId) {
+      await client.query("ROLLBACK");
+      return { success: false, message: "Batch ID is required." };
+    }
+    if (newId !== old_id.trim()) {
+      const { rows } = await client.query(
+        "SELECT 1 FROM batches WHERE batch_id = $1", [newId]
+      );
+      if (rows.length > 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: `Batch ID "${newId}" already exists.` };
+      }
+    }
+    await client.query(
+      `UPDATE batches SET batch_id=$1, schedule_date=$2, stenter=$3, weight=$4,
+       width=$5, length=$6, gsm=$7, temperature=$8 WHERE batch_id=$9`,
+      [newId, batch.schedule_date || "", batch.stenter || "", batch.weight || "",
+       batch.width || "", batch.length || "", batch.gsm || "", batch.temperature || "",
+       old_id.trim()]
+    );
+    // Replace all chemicals for this batch
+    await client.query("DELETE FROM batch_chemicals WHERE batch_id = $1", [newId]);
+    for (const chem of (batch.chemicals || [])) {
+      await client.query(
+        "INSERT INTO batch_chemicals (batch_id, chemical_id, density) VALUES ($1, $2, $3)",
+        [newId, chem.chemical_id, chem.density]
+      );
+    }
+    await client.query("COMMIT");
+    return { success: true };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[DB] batches:update-full error:", err.message);
+    return { success: false, message: err.message };
+  } finally {
+    client.release();
+  }
+});
+
+// ── GSM Multiplier Handlers ────────────────────────────────────────────────────
+
+/**
+ * multipliers:list — Returns all GSM range multipliers ordered by sort_order.
+ */
+ipcMain.handle("multipliers:list", async () => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order FROM gsm_multipliers ORDER BY sort_order"
+    );
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] multipliers:list error:", err.message);
+    return { success: false, message: "Failed to load multipliers.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * multipliers:update — Updates wet_multiplier and dry_multiplier for a given gsm_range.
+ */
+ipcMain.handle("multipliers:update", async (_event, { gsm_range, wet_multiplier, dry_multiplier }) => {
+  try {
+    await pool.query(
+      "UPDATE gsm_multipliers SET wet_multiplier = $1, dry_multiplier = $2 WHERE gsm_range = $3",
+      [wet_multiplier, dry_multiplier, gsm_range]
+    );
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] multipliers:update error:", err.message);
+    return { success: false, message: "Failed to update multiplier.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * multipliers:add — Inserts a new GSM range multiplier row.
+ */
+ipcMain.handle("multipliers:add", async (_event, { gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order }) => {
+  try {
+    await pool.query(
+      `INSERT INTO gsm_multipliers (gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [gsm_range, range_min, range_max, wet_multiplier, dry_multiplier, sort_order]
+    );
+    return { success: true };
+  } catch (err) {
+    if (err.code === "23505") {
+      return { success: false, message: "A multiplier for range \"" + gsm_range + "\" already exists.", code: "DUPLICATE" };
+    }
+    console.error("[DB] multipliers:add error:", err.message);
+    return { success: false, message: "Failed to add multiplier.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * multipliers:delete — Deletes a GSM range multiplier row.
+ */
+ipcMain.handle("multipliers:delete", async (_event, { gsm_range }) => {
+  try {
+    await pool.query("DELETE FROM gsm_multipliers WHERE gsm_range = $1", [gsm_range]);
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] multipliers:delete error:", err.message);
+    return { success: false, message: "Failed to delete multiplier.", code: "UNKNOWN" };
+  }
+});
+
+// ── Production Record Handlers ─────────────────────────────────────────────────
+
+/**
+ * production:submit — Saves a full calculation report when a worker pushes to production.
+ * Inserts into production_records + production_chemicals in a transaction.
+ */
+ipcMain.handle("production:submit", async (_event, { record }) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const userId = normalizeUuid(record.user_id);
+
+    const { rows } = await client.query(
+      `INSERT INTO production_records
+         (user_id, batch_id, schedule_date, stenter, wet_dry, gsm, width, length,
+          cloth_weight, fabric_factor, gsm_range, multiplier, total_bath, t_value, bath_concentration)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING id`,
+      [
+        userId,
+        record.batch_id || null,
+        record.schedule_date || null,
+        record.stenter || null,
+        record.wet_dry,
+        record.gsm,
+        record.width,
+        record.length,
+        record.cloth_weight || null,
+        record.fabric_factor,
+        record.gsm_range || null,
+        record.multiplier,
+        record.total_bath,
+        record.t_value,
+        record.bath_concentration,
+      ]
+    );
+
+    const recordId = rows[0].id;
+
+    for (const chem of (record.chemicals || [])) {
+      await client.query(
+        `INSERT INTO production_chemicals (record_id, chemical_id, chemical_name, density, dosage)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [recordId, chem.chemical_id || '', chem.name, chem.density, chem.dosage]
+      );
+    }
+
+    await client.query("COMMIT");
+    console.log("[DB] Production record saved — id:", recordId, "user:", userId || "anonymous");
+    return { success: true, data: { id: recordId } };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[DB] production:submit error:", err.message);
+    return { success: false, message: "Failed to save production record." };
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * production:list — Returns all production records with chemicals, ordered by submitted_at desc.
+ * Used by admin analytics to show submitted production data.
+ */
+ipcMain.handle("production:list", async () => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT pr.id, pr.user_id, pr.batch_id, pr.schedule_date, pr.stenter,
+             pr.wet_dry, pr.gsm, pr.width, pr.length, pr.cloth_weight,
+             pr.fabric_factor, pr.gsm_range, pr.multiplier, pr.total_bath,
+             pr.t_value, pr.bath_concentration, pr.submitted_at,
+             u.name AS user_name,
+             COALESCE(
+               json_agg(
+                 json_build_object(
+                   'chemical_id', pc.chemical_id,
+                   'chemical_name', pc.chemical_name,
+                   'density', pc.density,
+                   'dosage', pc.dosage
+                 )
+               ) FILTER (WHERE pc.chemical_name IS NOT NULL),
+               '[]'::json
+             ) AS chemicals
+      FROM production_records pr
+      LEFT JOIN users u ON pr.user_id = u.id
+      LEFT JOIN production_chemicals pc ON pr.id = pc.record_id
+      GROUP BY pr.id, pr.user_id, pr.batch_id, pr.schedule_date, pr.stenter,
+               pr.wet_dry, pr.gsm, pr.width, pr.length, pr.cloth_weight,
+               pr.fabric_factor, pr.gsm_range, pr.multiplier, pr.total_bath,
+               pr.t_value, pr.bath_concentration, pr.submitted_at, u.name
+      ORDER BY pr.submitted_at DESC
+    `);
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] production:list error:", err.message);
+    return { success: false, message: "Failed to load production records.", code: "UNKNOWN" };
+  }
+});
+
+/**
+ * production:delete — Deletes a single production record by id.
+ */
+ipcMain.handle("production:delete", async (_event, { id }) => {
+  try {
+    await pool.query("DELETE FROM production_records WHERE id = $1", [id]);
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] production:delete error:", err.message);
+    return { success: false, message: "Failed to delete production record." };
+  }
+});
+
+// ── Analytics Handlers ─────────────────────────────────────────────────────────
+
+/**
+ * analytics:daily-usage — Aggregated chemical dosages for a date or date range.
+ * Groups by chemical_name, sums dosage from production_chemicals.
+ * Dates are compared against submitted_at (cast to date).
+ */
+ipcMain.handle("analytics:daily-usage", async (_event, { dateFrom, dateTo }) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pc.chemical_name,
+              SUM(pc.dosage) AS total_dosage
+       FROM production_records pr
+       JOIN production_chemicals pc ON pr.id = pc.record_id
+       WHERE pr.submitted_at::date >= $1::date
+         AND pr.submitted_at::date <= $2::date
+       GROUP BY pc.chemical_name
+       ORDER BY pc.chemical_name`,
+      [dateFrom, dateTo]
+    );
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] analytics:daily-usage error:", err.message);
+    return { success: false, message: "Failed to load daily usage data." };
+  }
+});
+
+/**
+ * analytics:chemical-trend — Daily dosage totals for a specific chemical over a date range.
+ * Returns one row per day with the summed dosage.
+ */
+ipcMain.handle("analytics:chemical-trend", async (_event, { chemicalName, dateFrom, dateTo }) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pr.submitted_at::date AS date,
+              SUM(pc.dosage)        AS total_dosage
+       FROM production_records pr
+       JOIN production_chemicals pc ON pr.id = pc.record_id
+       WHERE pc.chemical_name = $1
+         AND pr.submitted_at::date >= $2::date
+         AND pr.submitted_at::date <= $3::date
+       GROUP BY pr.submitted_at::date
+       ORDER BY pr.submitted_at::date`,
+      [chemicalName, dateFrom, dateTo]
+    );
+    return { success: true, data: rows };
+  } catch (err) {
+    console.error("[DB] analytics:chemical-trend error:", err.message);
+    return { success: false, message: "Failed to load chemical trend data." };
+  }
+});
+
+/**
+ * analytics:chemical-names — Returns distinct chemical names from production_chemicals.
+ * Used to populate the chemical selector dropdown in analytics.
+ */
+ipcMain.handle("analytics:chemical-names", async () => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT pc.chemical_name
+       FROM production_chemicals pc
+       WHERE pc.chemical_name IS NOT NULL AND pc.chemical_name != ''
+       ORDER BY pc.chemical_name`
+    );
+    return { success: true, data: rows.map(r => r.chemical_name) };
+  } catch (err) {
+    console.error("[DB] analytics:chemical-names error:", err.message);
+    return { success: false, message: "Failed to load chemical names." };
+  }
+});
+
+module.exports = { initDB, pool };
